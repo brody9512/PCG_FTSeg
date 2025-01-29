@@ -1,170 +1,94 @@
-
 # jupyter notebook 으로 쓸 때
 import multiprocessing
-# multiprocessing.set_start_method('spawn', force=True)
-import os, sys, shutil
-#import multiprocessing
+import os, shutil
 
-from model import *
-from modules import *
-from data import *
-from utils import *
-
-from utils import DiceBCELoss, set_seed
-
-import pylab as plt
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
 import sklearn
 import sklearn.metrics
-
 import os
-os.environ["HTTP_PROXY"] = "http://192.168.45.100:3128"
-os.environ["HTTPS_PROXY"] = "http://192.168.45.100:3128"
-
-import librosa as lb
-import pylab as plt
-import glob
-import natsort
-import scipy
-import datetime
-
-#%matplotlib inline
 import warnings
 warnings.filterwarnings(action='ignore')
-
-
-import matplotlib.colors as mcolors
-from glob import glob
-from tqdm.notebook import tqdm, trange
-from natsort import natsorted
-
-import scipy
-import scipy.io as sio
-from skimage import morphology
-from scipy import ndimage
-from utils import *
-
-import kornia
-import neurokit2 as nk
-import librosa as lb
-import librosa.display
-import soundfile as sf
-
 import sklearn
-
 import cv2
 import monai
-from monai.inferers import sliding_window_inference
 from monai.config import print_config
-
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import *
 from pytorch_lightning.loggers import *
-
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-
-import skimage
-import skimage.morphology
-from typing import Optional, Sequence, Tuple, Union
+from torch.utils.data import DataLoader
 import shutil
-import math
-import argparse
-
-from matplotlib import gridspec
-
 from livelossplot import PlotLosses
-from parser import get_parser
 
-parser = get_parser()
+# Import from Directory Architecture
+from config import get_args
+from model import *
+from modules import *
+from dataset import *
+from utils import *
+from utils import DiceBCELoss, set_seed
 
-args = parser.parse_args()
 
-not_amc=args.not_amc
-not_2022=args.not_2022
-not_2016=args.not_2016
+os.environ["HTTP_PROXY"] = "http://192.168.45.100:3128"
+os.environ["HTTPS_PROXY"] = "http://192.168.45.100:3128"
+
+args = get_args()
+
+# not_amc=args.not_amc
+# not_2022=args.not_2022
+# not_2016=args.not_2016
 
 # 인자 값들을 변수에 할당
-featureLength = args.featureLength
-target_sr = args.target_sr
-lowpass = args.lowpass
-year = args.year
-
-
-de_conv_=args.de_conv_
-de_fft=args.de_fft
-de_fftconv=args.de_fftconv
-
-request_infer=args.request_infer
-request_infer_path=args.request_infer_path
-
-de_aspp = args.de_aspp
-de_deeprft = args.de_deeprft
-de_se= args.de_se
-de_nl= args.de_nl
-de_cbam= args.de_cbam
-
-not_se=args.not_se
-not_fft=args.not_fft
-
-se_ratio = args.se_ratio
-dr_se_seq_adverse = args.dr_se_seq_adverse
-dr_se_identity = args.dr_se_identity
-
-
-de_dr_se_identity=args.de_dr_se_identity
-
-twice=args.twice
-third=args.third
-fourth=args.fourth
-
-
-conv_=args.conv_
-fft=args.fft
-fftconv=args.fftconv
-
-nl_ = args.nl
-cbam_ = args.cbam
-#sa_ = args.sa
-
-seblock_ = args.se
-aspp_ = args.aspp
-deeprft_ = args.deeprft
-mha_=args.mha
-
-residual_one=args.residual_one
-img_not_residual_one=args.img_not_residual_one
-
-
-k_fold_ = args.k_fold
-
-toler=args.toler
-
-infer = args.infer
-infer_2022 = args.infer_2022
-nofolder=args.nofolder
-
-ver = args.ver
-gpus = args.gpu
-
-# featureLength = 12288
-in_channels = 2
-out_channels = 4
-minsize=50
-thr=0.5
-
-train_batch= args.batch #64
-version=2
-
-max_ep=250
-
-seed_=args.seed
+# featureLength = args.featureLength
+# target_sr = args.target_sr
+# lowpass = args.lowpass
+# year = args.year
+# de_conv_=args.de_conv_
+# de_fft=args.de_fft
+# de_fftconv=args.de_fftconv
+# request_infer=args.request_infer
+# request_infer_path=args.request_infer_path
+# de_aspp = args.de_aspp
+# de_deeprft = args.de_deeprft
+# de_se= args.de_se
+# de_nl= args.de_nl
+# de_cbam= args.de_cbam
+# not_se=args.not_se
+# not_fft=args.not_fft
+# se_ratio = args.se_ratio
+# dr_se_seq_adverse = args.dr_se_seq_adverse
+# dr_se_identity = args.dr_se_identity
+# de_dr_se_identity=args.de_dr_se_identity
+# twice=args.twice
+# third=args.third
+# fourth=args.fourth
+# conv_=args.conv_
+# fft=args.fft
+# fftconv=args.fftconv
+# nl_ = args.nl
+# cbam_ = args.cbam
+# seblock_ = args.se
+# aspp_ = args.aspp
+# deeprft_ = args.deeprft
+# mha_=args.mha
+# residual_one=args.residual_one
+# img_not_residual_one=args.img_not_residual_one
+# k_fold_ = args.k_fold
+# toler=args.toler
+# infer = args.infer
+# infer_2022 = args.infer_2022
+# nofolder=args.nofolder
+# ver = args.ver
+# gpus = args.gpu
+# in_channels = 2
+# out_channels = 4
+# minsize=50
+# thr=0.5
+# train_batch= args.batch #64
+# version=2
+# max_ep=250
+# seed_=args.seed
 
 print(f'pytorch_lightning version : {pl.__version__}')
 

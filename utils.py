@@ -1,22 +1,20 @@
 import os
 import random
-
 import scipy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import monai
 import numpy as np
 from scipy.signal import butter, lfilter, filtfilt
-
 import neurokit2 as nk
 from neurokit2.signal import *
 
-from parser import get_parser
+# Import from Directory Architecture
+from config import get_args
 
-parser = get_parser()
-args = parser.parse_args()
+
+args = get_args()
 
 seed_=args.seed
 
@@ -48,11 +46,7 @@ def set_seed(seed=seed_):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = True
-    # torch.use_deterministic_algorithms(True)
     monai.utils.misc.set_determinism(seed=seed)
-    # pl.seed_everything(seed,True)    
-
-
 
 class DiceBCELoss(nn.Module):
     def __init__(self):
@@ -131,14 +125,9 @@ def minmax(tensor):
 def augment_neurokit(pcg_signal, sr, p=0.2):
     
     if np.random.rand(1) <= p:
-        #b = np.random.rand(2, 3)
-        #[[0.83739956 0.62462355 0.66043459]
-        #[0.96358531 0.23121274 0.68940178]]
         
         noise_shape = ['gaussian', 'laplace']
         n_noise_shape = np.random.randint(0,2)
-        #a = np.random.randint(0, 10, 1000)
-        # a는 [0, 10) 범위의 임의의 정수 1000개
 
         noise_amplitude = np.random.rand(1)*.4 #/ noise_frequency
         powerline_amplitude = np.random.rand(1)*.2 #/ powerline_frequency
@@ -148,7 +137,6 @@ def augment_neurokit(pcg_signal, sr, p=0.2):
         noise_frequency = np.random.randint(10,50)
         powerline_frequency = np.random.randint(50,60)
         artifacts_frequency= np.random.randint(2,40)
-        # artifacts_number = np.random.randint(2,20)
         
         artifacts_number = 10
 
@@ -180,19 +168,13 @@ def augment_neurokit2(sig, sr, p=0.3):
 
         noise = nk.signal.signal_noise(duration=len(sig)/sr, sampling_rate=sr, beta=beta) * amp
         aug = augment_neurokit(noise, sr=sr)
-        # temp1 = np.random.rand(1)
-        # temp2 = np.random.rand(1)
-        # start = int(np.min([temp1,temp2])*len(sig))
-        # end = int(np.max([temp1,temp2])*len(sig))
         result = np.zeros(len(sig))
 
         result[:len(aug)] = aug
 
         filt = np.zeros_like(sig)
         result = result * filt
-        #result = result(변형 시킨 것) * filt(빈공간)
 
-        # filt[start:end]= 1
         filt = scipy.ndimage.gaussian_filter1d(filt,11,order=0,mode='nearest')
         #line chart의 noise를 제거하기 위하여 gaussian filter를 사용하였다.
         

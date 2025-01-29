@@ -2,15 +2,11 @@ import monai
 import numpy as np
 import torch 
 
-from monai.networks.utils import one_hot
+# Import from Directory Architecture
+from config import get_args
 from utils import augment_neurokit, zscore
-from parser import get_parser
 
-parser = get_parser()
-args = parser.parse_args()
-
-featureLength = args.featureLength
-target_sr = args.target_sr
+args = get_args()
 
 class dataset():
     def __init__(self, data, phase='test'):
@@ -25,7 +21,7 @@ class dataset():
         x = self.data[idx]['wav']
         y = self.data[idx]['seg']
         fname =self.data[idx]['fname']
-#        x = butter_bandpass_filter(x,target_sr,20,200) #이거 맞춰서 20-200가야 하는 건가
+        # x = butter_bandpass_filter(x,target_sr,20,200) #이거 맞춰서 20-200가야 하는 건가
 
         # seg가 0인 것을 확실히 제거한다, 이 참에 wav도 똑같이 한다
         no_zeros=np.where(y != 0)[0]
@@ -33,12 +29,12 @@ class dataset():
         y = y[no_zeros[0]:no_zeros[-1]]        
         
         if self.phase=='train':
-            x = augment_neurokit(x, target_sr)
+            x = augment_neurokit(x, args.target_sr)
             total = x.shape[-1]
-            delta = (total - featureLength)//2 #2016은 featureLength=8192
+            delta = (total - args.featureLength)//2 #2016은 featureLength=8192
             rn = int(np.random.rand()* delta) 
             start = rn
-            end = start+featureLength
+            end = start+args.featureLength
             x_=x[start:end]
             y_=y[start:end]
             
@@ -71,7 +67,7 @@ class dataset():
         y_[y_==1]=1
         y_[y_==3]=3 # 4ch
         y__ = y_.clone()
-        #y__[y__!=0]=1
+        # y__[y__!=0]=1
 
         y__[y_==2]=1
         y__[y_==4]=1
@@ -93,5 +89,5 @@ class dataset():
         # y_onehot = y_onehot[1:]
         # y_onehot = torch.flip(y_onehot,dims=(0,))
         return {'x':x_, 'y':y__, 'y_4stage':y_, 'y_onehot': y_onehot1, 'fname':fname}
-#        return {'x':x_, 'y':y__, 'y_2stage':y_, 'y_onehot': y_onehot, 'fname':fname}
+        # return {'x':x_, 'y':y__, 'y_2stage':y_, 'y_onehot': y_onehot, 'fname':fname}
   
