@@ -1,100 +1,31 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from typing import Optional, Sequence, Tuple, Union
 from monai.networks.blocks.convolutions import Convolution
 from monai.networks.layers import same_padding
 from monai.networks.layers.factories import Conv
-
 from utils import *
-from parser import get_parser
 
-parser = get_parser()
+# Import from Directory Architecture
+from config import get_args
+
+
+parser = get_args()
 
 args = parser.parse_args()
 
-not_amc=args.not_amc
-not_2022=args.not_2022
-not_2016=args.not_2016
-
-# 인자 값들을 변수에 할당
-featureLength = args.featureLength
-target_sr = args.target_sr
-lowpass = args.lowpass
-year = args.year
-
-
-de_conv_=args.de_conv_
-de_fft=args.de_fft
-de_fftconv=args.de_fftconv
-
-request_infer=args.request_infer
-request_infer_path=args.request_infer_path
-
-de_aspp = args.de_aspp
-de_deeprft = args.de_deeprft
-de_se= args.de_se
-de_nl= args.de_nl
-de_cbam= args.de_cbam
-
-not_se=args.not_se
-not_fft=args.not_fft
-
-se_ratio = args.se_ratio
-dr_se_seq_adverse = args.dr_se_seq_adverse
-dr_se_identity = args.dr_se_identity
-
-
-de_dr_se_identity=args.de_dr_se_identity
-
-twice=args.twice
-third=args.third
-fourth=args.fourth
-
-
-conv_=args.conv_
-fft=args.fft
-fftconv=args.fftconv
-
-nl_ = args.nl
-cbam_ = args.cbam
-#sa_ = args.sa
-
-seblock_ = args.se
-aspp_ = args.aspp
-deeprft_ = args.deeprft
-mha_=args.mha
-
-residual_one=args.residual_one
-img_not_residual_one=args.img_not_residual_one
-
-
-k_fold_ = args.k_fold
-
-toler=args.toler
-
-infer = args.infer
-infer_2022 = args.infer_2022
-nofolder=args.nofolder
-
-ver = args.ver
-gpus = args.gpu
-
-# featureLength = 12288
 in_channels = 2
 out_channels = 4
 minsize=50
 thr=0.5
 
-train_batch= args.batch #64
 version=2
 
 max_ep=250
 learning_rate= 2e-4
 
 '''NLBLockND !!!'''
-
 class NLBlockND(nn.Module):
     def __init__(self, in_channels, inter_channels=None, mode='embedded', dimension=3, norm_layer='batch'):
         """Implementation of Non-Local Block with 4 different pairwise functions but doesn't include subsampling trick

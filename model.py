@@ -4,38 +4,29 @@ from monai.networks.layers.factories import Conv
 from monai.networks.nets.basic_unet import Down, TwoConv, UpCat, Pool
 from monai.utils import ensure_tuple_rep
 from monai.networks.blocks import UpSample
-
 from monai.inferers import sliding_window_inference
-
-from typing import Optional, Sequence, Tuple, Union
-
+from typing import Optional, Sequence, Union
 import numpy as np
 import scipy
 import skimage
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
 import math
 import torchmetrics
-
 import pylab as plt
-
-from utils import eval_metrics
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import *
 from pytorch_lightning.loggers import *
 
+# Import from Directory Architecture
+from config import get_args
 from modules import DeepRFT, SimpleASPP, SimpleASPP_deeprft, DeepRFT_SE_identity, NLBlockND, CBAM, fftRFT, fftconvRFT, convRFT
-from utils import DiceBCELoss
-from parser import get_parser
+from utils import DiceBCELoss, eval_metrics
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-parser = get_parser()
-
-args = parser.parse_args()
+args = get_args()
 
 not_amc=args.not_amc
 not_2022=args.not_2022
@@ -82,7 +73,6 @@ fftconv=args.fftconv
 
 nl_ = args.nl
 cbam_ = args.cbam
-#sa_ = args.sa
 
 seblock_ = args.se
 aspp_ = args.aspp
@@ -104,13 +94,11 @@ nofolder=args.nofolder
 ver = args.ver
 gpus = args.gpu
 
-# featureLength = 12288
 in_channels = 2
 out_channels = 4
 minsize=50
 thr=0.5
 
-train_batch= args.batch #64
 version=2
 
 max_ep=250
