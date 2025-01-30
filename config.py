@@ -2,34 +2,39 @@
 import argparse
 
 def get_args():
+    """
+    Returns a namespace of parsed command-line arguments.
+    """
     parser = argparse.ArgumentParser(description='Configure specific Arguments')
 
-    # GPU와 버전 관련 인자
+    # Hardware / version
     parser.add_argument('--gpu', type=str, default='1')
     parser.add_argument('--ver', type=int, default=45)
 
-    # feature 관련 인자
+    # Feature-related
     parser.add_argument('--featureLength', type=int, default=4096)
     parser.add_argument('--target_sr', type=int, default=1000)
     parser.add_argument('--lowpass', type=str, default=240)
     parser.add_argument('--toler', type=int, default=40)
-
-    # 연도 관련 인자
     parser.add_argument('--year', type=int, default=2016)
 
-    # Boolean 관련 인자. 해당 플래그가 존재하면 True, 아니면 False
+    # Model / modules in boolean
     parser.add_argument('--aspp', action='store_true')
     parser.add_argument('--deeprft', action='store_true')
     parser.add_argument('--se', action='store_true')
     parser.add_argument('--nl', action='store_true')
     parser.add_argument('--cbam', action='store_true')
     parser.add_argument('--mha', action='store_true')
+    
+    # Inference / folder
     parser.add_argument('--infer', action='store_true')
     parser.add_argument('--infer_2022', action='store_true')
     parser.add_argument('--request_infer', action='store_true')
     parser.add_argument('--request_infer_path', type=str)
     parser.add_argument('--nofolder', action='store_true')
     parser.add_argument('--k_fold', action='store_true')
+    
+    # Additional SE / RFT flags
     parser.add_argument('--se_ratio', type=int, default=2)
     parser.add_argument('--dr_se_seq_adverse', action='store_true')
     parser.add_argument('--dr_se_identity', action='store_true')
@@ -53,9 +58,13 @@ def get_args():
     parser.add_argument('--de_fft', action='store_true')
     parser.add_argument('--de_fftconv', action='store_true')
     parser.add_argument('--batch', type=int, default=64)
+    
+    # Dataset usage toggles
     parser.add_argument('--not_2016', action='store_true')
     parser.add_argument('--not_2022', action='store_true')
     parser.add_argument('--not_amc', action='store_true')
+    
+    # Seed
     parser.add_argument('--seed', type=int, default=42)
 
     return parser.parse_args()

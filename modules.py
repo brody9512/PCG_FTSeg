@@ -7,23 +7,6 @@ from monai.networks.layers import same_padding
 from monai.networks.layers.factories import Conv
 from utils import *
 
-# Import from Directory Architecture
-from config import get_args
-
-
-parser = get_args()
-
-args = parser.parse_args()
-
-in_channels = 2
-out_channels = 4
-minsize=50
-thr=0.5
-
-version=2
-
-max_ep=250
-learning_rate= 2e-4
 
 '''NLBLockND !!!'''
 class NLBlockND(nn.Module):
@@ -236,7 +219,7 @@ class ChannelGate(nn.Module):
                 channel_att_raw = self.mlp( lp_pool )
             elif pool_type=='lse':
                 # LSE pool only
-                lse_pool = logsumexp_2d(x)
+                lse_pool = utils.logsumexp_2d(x)
                 # lse_pool = logsumexp_1d(x)
                 channel_att_raw = self.mlp( lse_pool )
 
@@ -248,12 +231,6 @@ class ChannelGate(nn.Module):
         # scale = F.sigmoid(channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
         scale = torch.sigmoid(channel_att_sum ).unsqueeze(2).expand_as(x)
         return x * scale
-
-def logsumexp_2d(tensor):
-    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
-    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
-    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
-    return outputs
 
 class ChannelPool(nn.Module):
     def forward(self, x):
@@ -286,7 +263,7 @@ class CBAM(nn.Module):
     
 
 class SELayer1D(nn.Module):
-    def __init__(self, channel, reduction=se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
+    def __init__(self, channel, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
         super(SELayer1D, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool1d(1)
         self.fc = nn.Sequential(
@@ -304,7 +281,7 @@ class SELayer1D(nn.Module):
 
         
 class SEBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels, reduction=se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
+    def __init__(self, in_channels, out_channels, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
         super(SEBlock1D, self).__init__()
         # Ensure you're using the correct case for activation functions
         self.relu1 = getattr(nn, acti_type_1)(inplace=True) if acti_type_1 != 'Sigmoid' else getattr(nn, acti_type_1)()
@@ -322,7 +299,7 @@ class SEBlock1D(nn.Module):
         return out
     
 class ResidualSEBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels, reduction=se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
+    def __init__(self, in_channels, out_channels, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
         super(ResidualSEBlock1D, self).__init__()  # Fixed incorrect superclass reference
         self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm1d(out_channels)
@@ -357,8 +334,8 @@ class DeepRFT_SE_identity(nn.Module):
         self.norm1 = nn.InstanceNorm1d(out_channels)
         self.norm2 = nn.InstanceNorm1d(out_channels*2)
         
-        self.resi_seblock =ResidualSEBlock1D(in_channels, out_channels, reduction=se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU')  #monai.networks.blocks.ResidualSELayer(spatial_dims=spatial_dims, in_channels=in_channels, r=se_ratio, acti_type_1='leakyrelu', acti_type_2='relu')
-        self.seblock= SEBlock1D(in_channels, out_channels, reduction=se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU')
+        self.resi_seblock =ResidualSEBlock1D(in_channels, out_channels, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU')  #monai.networks.blocks.ResidualSELayer(spatial_dims=spatial_dims, in_channels=in_channels, r=args.se_ratio, acti_type_1='leakyrelu', acti_type_2='relu')
+        self.seblock= SEBlock1D(in_channels, out_channels, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU')
         
         self.residual_one = residual_one
         self.img_not_residual_one=img_not_residual_one

@@ -1,43 +1,15 @@
 import os
 import random
-import scipy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import monai
 import numpy as np
-from scipy.signal import butter, lfilter, filtfilt
 import neurokit2 as nk
-from neurokit2.signal import *
-
-# Import from Directory Architecture
-from config import get_args
+import neurokit2 as nk
 
 
-args = get_args()
-
-seed_=args.seed
-
-def butter_bandpass(lowcut, highcut, fs, order=5):
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    return b, a
-
-def butter_bandpass_filter(data, fs, lowcut=25, highcut=400, order=5):
-    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-def butter_lowpass_filter(data, cutoff, fs, order):
-    nyq = 0.5 * fs  # Nyquist Frequency
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    y = filtfilt(b, a, data)
-    return y
-
-def set_seed(seed=seed_):
+def set_seed(seed: int = 42):
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
@@ -50,60 +22,65 @@ def set_seed(seed=seed_):
 
 class DiceBCELoss(nn.Module):
     def __init__(self):
-        super(DiceBCELoss, self).__init__()
+        super().__init__()
         self.dice = monai.losses.DiceLoss()
    
     def forward(self, inputs, targets):
-        dice = self.dice(inputs, targets)
-        bce = F.binary_cross_entropy(inputs, targets)
-        # print(dice,bce)
-        return dice + bce
-
-def eval_metrics(gt1, pr1, a, b, c, d, e, f,toler):
-
+        dice_loss  = self.dice(inputs, targets)
+        bce_loss  = F.binary_cross_entropy(inputs, targets)
+        return dice_loss + bce_loss
+    
+def eval_metrics(gt_idxs, pred_idxs, tp_accum, fn_accum, fp_accum, sen_accum, pre_accum, f1_accum, tolerance=40):
+    """
+    Evaluate event-based segmentation metrics with a tolerance window.
+    gt_idxs: list of ground-truth event indices
+    pred_idxs: list of predicted event indices
+    """
     TP = 0
-    TP_= 0
-
-    for i in gt1:
-        for j in pr1:
-            if abs(i - j) <= toler:
+    # Count true positives with tolerance
+    for g in gt_idxs:
+        for p in pred_idxs:
+            if abs(g - p) <= tolerance:
                 TP += 1
                 break
 
-    FP = len(pr1) - TP
+    # Count false positives
+    FP = len(pred_idxs) - TP
 
-    for q in pr1:
-        for p in gt1:
-            if abs(p - q) <= toler:
-                TP_ += 1
+    # Another pass for FN
+    TP2 = 0
+    for p in pred_idxs:
+        for g in gt_idxs:
+            if abs(p - g) <= tolerance:
+                TP2 += 1
                 break
-    
-    FN = len(gt1) -TP_
 
+    FN = len(gt_idxs) - TP2
 
-    if TP + FN == 0:
+    if (TP + FN) == 0:
         sensitivity = 0
     else:
         sensitivity = TP / (TP + FN)
-    
-    if TP + FP == 0:
+
+    if (TP + FP) == 0:
         precision = 0
     else:
         precision = TP / (TP + FP)
 
-    if sensitivity + precision == 0:
+    if (sensitivity + precision) == 0:
         f1_score = 0
     else:
-        f1_score = (2 * sensitivity * precision) / (sensitivity + precision)
+        f1_score = 2 * sensitivity * precision / (sensitivity + precision)
 
-    a += TP
-    b += FN
-    c += FP
-    d += sensitivity
-    e += precision
-    f += f1_score
+    # Accumulate into running totals
+    tp_accum += TP
+    fn_accum += FN
+    fp_accum += FP
+    sen_accum += sensitivity
+    pre_accum += precision
+    f1_accum += f1_score
 
-    return a, b, c, d, e, f
+    return tp_accum, fn_accum, fp_accum, sen_accum, pre_accum, f1_accum
     
 def zscore(arr,mean=None,std=None):
     if mean!=None or std!=mean:
@@ -113,73 +90,45 @@ def zscore(arr,mean=None,std=None):
             return (arr-np.mean(arr))/(np.std(arr)+1e-8)
         except:
             return (arr-torch.mean(arr))/(torch.std(arr)+1e-8)
-            
-def minmax(tensor):
-    try:
-        return (tensor-torch.min(tensor))/(torch.max(tensor)-torch.min(tensor))
-    except:
-        return (tensor-np.min(tensor))/(np.max(tensor)-np.min(tensor))
-    
-
+        
+def logsumexp_2d(tensor):
+    """
+    Used in CBAM channel gating (LSE pool).
+    Flatten to 2D, apply log-sum-exp.
+    """
+    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
+    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
+    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
+    return outputs
 
 def augment_neurokit(pcg_signal, sr, p=0.2):
-    
+    """
+    Randomly distorts a PCG signal using NeuroKit's signal_distort.
+    """
     if np.random.rand(1) <= p:
-        
-        noise_shape = ['gaussian', 'laplace']
-        n_noise_shape = np.random.randint(0,2)
-
+        noise_shape = np.random.choice(['gaussian', 'laplace'])
         noise_amplitude = np.random.rand(1)*.4 #/ noise_frequency
         powerline_amplitude = np.random.rand(1)*.2 #/ powerline_frequency
         artifacts_amplitude = np.random.rand(1)*1 #/ artifacts_frequency
         
-        #samples/second
         noise_frequency = np.random.randint(10,50)
         powerline_frequency = np.random.randint(50,60)
         artifacts_frequency= np.random.randint(2,40)
-        
         artifacts_number = 10
 
-        pcg_signal = signal_distort(pcg_signal,
-                                    sampling_rate=sr,
-                                    noise_shape=noise_shape[n_noise_shape],
-
-                                    #the scale of the random function, relative to the standard deviation of the signal).
-                                    noise_amplitude=noise_amplitude,# The amplitude of the noise 
-                                    powerline_amplitude=powerline_amplitude,
-                                    artifacts_amplitude=artifacts_amplitude,
-
-                                    #samples/second
-                                    noise_frequency=noise_frequency,
-                                    powerline_frequency=powerline_frequency,
-                                    artifacts_frequency=artifacts_frequency,
-
-                                    artifacts_number=artifacts_number,# The number of artifact bursts. The bursts have a random duration between 1 and 10% of the signal duration.
-                                    linear_drift=False,#Whether or not to add linear drift to the signal.
-                                    random_state=42,#None,#42,
-                                    silent=True)
+        pcg_signal = nk.signal_distort(
+            pcg_signal,
+            sampling_rate=sr,
+            noise_shape=noise_shape,
+            noise_amplitude=noise_amplitude,
+            powerline_amplitude=powerline_amplitude,
+            artifacts_amplitude=artifacts_amplitude,
+            noise_frequency=noise_frequency,
+            powerline_frequency=powerline_frequency,
+            artifacts_frequency=artifacts_frequency,
+            artifacts_number=artifacts_number,
+            linear_drift=False,
+            random_state=42,
+            silent=True
+        )
     return pcg_signal
-
-def augment_neurokit2(sig, sr, p=0.3):
-    
-    if np.random.rand(1) <= p:
-        beta = (np.random.rand(1)-.5)*4
-        amp = np.random.rand(1)*.01
-
-        noise = nk.signal.signal_noise(duration=len(sig)/sr, sampling_rate=sr, beta=beta) * amp
-        aug = augment_neurokit(noise, sr=sr)
-        result = np.zeros(len(sig))
-
-        result[:len(aug)] = aug
-
-        filt = np.zeros_like(sig)
-        result = result * filt
-
-        filt = scipy.ndimage.gaussian_filter1d(filt,11,order=0,mode='nearest')
-        #line chart의 noise를 제거하기 위하여 gaussian filter를 사용하였다.
-        
-        result = sig + result
-        return result
-
-    else:
-        return sig
