@@ -1,4 +1,4 @@
-import datetime
+DeepRFT_SE_identityimport datetime
 import monai
 from monai.networks.layers.factories import Conv
 from monai.networks.nets.basic_unet import Down, TwoConv, UpCat, Pool
@@ -83,10 +83,7 @@ class Down(nn.Sequential):
         self.deeprft = DeepRFT(in_chns,in_chns)
         self.aspp = SimpleASPP(spatial_dims, in_chns, in_chns//4, kernel_sizes= (1, 3, 3, 3), dilations= (1, 2, 4, 8), norm_type=norm, acti_type=act)
         self.aspp_deeprft = SimpleASPP_deeprft(spatial_dims, in_chns, in_chns//4, kernel_sizes= (1, 3, 3, 3), dilations= (1, 2, 4, 8), norm_type=norm, acti_type=act)
-        #self.aspp = monai.networks.blocks.SimpleASPP(spatial_dims, in_chns, in_chns//4, kernel_sizes= (1, 3, 3, 3), dilations= (1, 2, 4, 8), norm_type=norm, acti_type=act)
-        #'MultiheadAttention' comes after TwoConv, so you have to set it to 'out_chns'
         
-        #self.sablock = monai.networks.blocks.SABlock#(spatial_dims, in_channels=in_chns, out_channels=out_chns, act=act, norm=norm, bias=bias)
         self.DeepRFT_SE_identity=DeepRFT_SE_identity(in_chns, in_chns, norm='backward',residual_one=residual_one,img_not_residual_one=img_not_residual_one,not_fft=not_fft,not_se=not_se, spatial_dims=1)
          
         self.seblock = monai.networks.blocks.ResidualSELayer(spatial_dims=spatial_dims, in_channels=in_chns, r=se_ratio, acti_type_1='leakyrelu', acti_type_2='relu')
@@ -600,11 +597,7 @@ class UpCat(nn.Module):
         
         self.aspp = SimpleASPP(spatial_dims, cat_chns + up_chns, (cat_chns + up_chns)//4, kernel_sizes= (1, 3, 3, 3), dilations= (1, 2, 4, 8), norm_type=norm, acti_type=act)
         self.aspp_deeprft = SimpleASPP_deeprft(spatial_dims, cat_chns + up_chns, (cat_chns + up_chns)//4, kernel_sizes= (1, 3, 3, 3), dilations= (1, 2, 4, 8), norm_type=norm, acti_type=act)
-        #self.aspp = monai.networks.blocks.SimpleASPP(spatial_dims, in_chns, in_chns//4, kernel_sizes= (1, 3, 3, 3), dilations= (1, 2, 4, 8), norm_type=norm, acti_type=act)
-        #'MultiheadAttention' comes after TwoConv, so you have to set it to 'out_chns'
-        
-        #self.sablock = monai.networks.blocks.SABlock#(spatial_dims, in_channels=in_chns, out_channels=out_chns, act=act, norm=norm, bias=bias)
-        
+
         self.nlblock = NLBlockND(in_channels=cat_chns + up_chns, mode='embedded', dimension=1, norm_layer='instance')
         self.cbam = CBAM(cat_chns + up_chns, reduction_ratio=16, )
         

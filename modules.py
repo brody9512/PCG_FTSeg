@@ -5,29 +5,13 @@ from typing import Optional, Sequence, Tuple, Union
 from monai.networks.blocks.convolutions import Convolution
 from monai.networks.layers import same_padding
 from monai.networks.layers.factories import Conv
-from utils import *
+
+from utils import logsumexp_2d
 
 
-'''NLBLockND !!!'''
 class NLBlockND(nn.Module):
     def __init__(self, in_channels, inter_channels=None, mode='embedded', dimension=3, norm_layer='batch'):
-        """Implementation of Non-Local Block with 4 different pairwise functions but doesn't include subsampling trick
-        args:
-            in_channels: original channel size (1024 in the paper)
-            inter_channels: channel size inside the block if not specifed reduced to half (512 in the paper)
-            mode: supports Gaussian, Embedded Gaussian, Dot Product, and Concatenation
-            dimension: can be 1 (temporal), 2 (spatial), 3 (spatiotemporal)
-            norm_layer: whether to add norm ('batch', 'instance', None)
-            
-            
-        # if __name__ == '__main__':
-        #     import torch
-        #     x = torch.zeros(2, 16, 16)
-        #     net = NLBlockND(in_channels=x.shape[1], mode='embedded', dimension=1, norm_layer='instance')
-        #     out = net(x)
-        """
-        super(NLBlockND, self).__init__()
-
+        super().__init__()
         assert dimension in [1, 2, 3]
         
         if mode not in ['gaussian', 'embedded', 'dot', 'concatenate']:
@@ -35,68 +19,44 @@ class NLBlockND(nn.Module):
             
         self.mode = mode
         self.dimension = dimension
-
         self.in_channels = in_channels
         self.inter_channels = inter_channels
 
-        # the channel size is reduced to half inside the block
         if self.inter_channels is None:
             self.inter_channels = in_channels // 2
             if self.inter_channels == 0:
                 self.inter_channels = 1
         
-        # assign appropriate convolutional, max pool, and batch norm layers for different dimensions
         if dimension == 3:
             conv_nd = nn.Conv3d
-            max_pool_layer = nn.MaxPool3d(kernel_size=(1, 2, 2))
-            if norm_layer =='batch':
-                bn = nn.BatchNorm3d
-            elif norm_layer =='instance':
-                bn = nn.InstanceNorm3d            
+            bn = nn.InstanceNorm3d if norm_layer == 'instance' else nn.BatchNorm3d           
         elif dimension == 2:
             conv_nd = nn.Conv2d
-            max_pool_layer = nn.MaxPool2d(kernel_size=(2, 2))
-            if norm_layer =='batch':
-                bn = nn.BatchNorm2d
-            elif norm_layer =='instance':
-                bn = nn.InstanceNorm2d
+            bn = nn.InstanceNorm3d if norm_layer == 'instance' else nn.BatchNorm3d
         else:
             conv_nd = nn.Conv1d
-            # conv_nd = nn.Conv1d if FFT==False else FFC
-            # conv_nd = nn.Conv1d if FFT==False else FFC_BN_ACT
-            max_pool_layer = nn.MaxPool1d(kernel_size=(2))
-            if norm_layer =='batch':
-                bn = nn.BatchNorm1d
-            elif norm_layer =='instance':
-                bn = nn.InstanceNorm1d
+            bn = nn.InstanceNorm3d if norm_layer == 'instance' else nn.BatchNorm3d
 
-        # function g in the paper which goes through conv. with kernel size 1
         self.g = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels, kernel_size=1)
 
-        # add BatchNorm layer after the last conv layer
         if norm_layer is not None:
             self.W_z = nn.Sequential(
                     conv_nd(in_channels=self.inter_channels, out_channels=self.in_channels, kernel_size=1),
                     bn(self.in_channels)
                 )
-            # # from section 4.1 of the paper, initializing params of BN ensures that the initial state of non-local block is identity mapping
-            # nn.init.constant_(self.W_z[1].weight, 0)
-            # nn.init.constant_(self.W_z[1].bias, 0)
         else:
             self.W_z = conv_nd(in_channels=self.inter_channels, out_channels=self.in_channels, kernel_size=1)
 
-            # from section 3.3 of the paper by initializing Wz to 0, this block can be inserted to any existing architecture
             nn.init.constant_(self.W_z.weight, 0)
             nn.init.constant_(self.W_z.bias, 0)
 
-        # define theta and phi for all operations except gaussian
-        if self.mode == "embedded" or self.mode == "dot" or self.mode == "concatenate":
+        if self.mode in ['embedded', 'dot', 'concatenate']:
             self.theta = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels, kernel_size=1)
             self.phi = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels, kernel_size=1)
         
         if self.mode == "concatenate":
             self.W_f = nn.Sequential(
-                    conv_nd(in_channels=self.inter_channels * 2, out_channels=1, kernel_size=1),
+                    conv_nd(self.inter_channels * 2, 1, kernel_size=1),
                     nn.LeakyReLU(0.1)
                 )
             
@@ -108,31 +68,25 @@ class NLBlockND(nn.Module):
 
         batch_size = x.size(0)
         
-        # (N, C, THW)
         g_x = self.g(x).view(batch_size, self.inter_channels, -1)
         g_x = g_x.permute(0, 2, 1)
 
         if self.mode == "gaussian":
-            theta_x = x.view(batch_size, self.in_channels, -1)
+            theta_x = x.view(batch_size, self.in_channels, -1).permute(0, 2, 1)
             phi_x = x.view(batch_size, self.in_channels, -1)
-            theta_x = theta_x.permute(0, 2, 1)
             f = torch.matmul(theta_x, phi_x)
 
         elif self.mode == "embedded" or self.mode == "dot":
-            theta_x = self.theta(x).view(batch_size, self.inter_channels, -1)
+            theta_x = self.theta(x).view(batch_size, self.inter_channels, -1).permute(0, 2, 1)
             phi_x = self.phi(x).view(batch_size, self.inter_channels, -1)
-            theta_x = theta_x.permute(0, 2, 1)
             f = torch.matmul(theta_x, phi_x)
 
-        elif self.mode == "concatenate":
+        else:
             theta_x = self.theta(x).view(batch_size, self.inter_channels, -1, 1)
             phi_x = self.phi(x).view(batch_size, self.inter_channels, 1, -1)
-            
-            h = theta_x.size(2)
-            w = phi_x.size(3)
+            h, w = theta_x.size(2), phi_x.size(3)
             theta_x = theta_x.repeat(1, 1, 1, w)
             phi_x = phi_x.repeat(1, 1, h, 1)
-            
             concat = torch.cat([theta_x, phi_x], dim=1)
             f = self.W_f(concat)
             f = f.view(f.size(0), f.size(2), f.size(3))
@@ -140,37 +94,25 @@ class NLBlockND(nn.Module):
         if self.mode == "gaussian" or self.mode == "embedded":
             f_div_C = F.softmax(f, dim=-1)
             
-        elif self.mode == "dot" or self.mode == "concatenate":
-            N = f.size(-1) # number of position in x
-            f_div_C = f / N
+        elif self.mode in ['dot', 'concatenate']:
+            N = f.size(-1)
+            f_div_C = f / float(N)
         
-        y = torch.matmul(f_div_C, g_x)
-        
-        # contiguous here just allocates contiguous chunk of memory
-        y = y.permute(0, 2, 1).contiguous()
+        y = torch.matmul(f_div_C, g_x).permute(0, 2, 1).contiguous()
         y = y.view(batch_size, self.inter_channels, *x.size()[2:])
-        
         W_y = self.W_z(y)
-        # residual connection
         z = W_y + x
 
         return z
     
-
-
-def flatten_array(array):
-    return array.flatten() if len(array.shape) > 1 else array
-
-'''CBAM !!!'''
-
 class BasicConv(nn.Module):
-    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
-        super(BasicConv, self).__init__()
+    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1,
+                 relu=True, bn=True, bias=False):
+        super().__init__()
         self.out_channels = out_planes
-        # self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
-        # self.bn = nn.BatchNorm2d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
-        self.conv = nn.Conv1d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
-        self.bn = nn.BatchNorm1d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
+        self.conv = nn.Conv1d(in_planes, out_planes, kernel_size=kernel_size, stride=stride,
+                              padding=padding, dilation=dilation, groups=groups, bias=bias)
+        self.bn = nn.BatchNorm1d(out_planes, eps=1e-5, momentum=0.01, affine=True) if bn else None
         self.relu = nn.ReLU() if relu else None
 
     def forward(self, x):
@@ -184,10 +126,9 @@ class BasicConv(nn.Module):
 class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
-
 class ChannelGate(nn.Module):
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
-        super(ChannelGate, self).__init__()
+        super().__init__()
         self.gate_channels = gate_channels
         self.mlp = nn.Sequential(
             Flatten(),
@@ -196,71 +137,60 @@ class ChannelGate(nn.Module):
             nn.Linear(gate_channels // reduction_ratio, gate_channels)
             )
         self.pool_types = pool_types
+        
     def forward(self, x):
         channel_att_sum = None
         for pool_type in self.pool_types:
             if pool_type=='avg':
-                # avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                avg_pool = F.avg_pool1d( x, x.size(2), stride=x.size(2))
-                
-                #print('avg_pool.shape:',avg_pool.shape)  # 차원 확인
-                
-                channel_att_raw = self.mlp( avg_pool )
+                pool = F.avg_pool1d( x, x.size(2), stride=x.size(2))
             elif pool_type=='max':
-                # max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                max_pool = F.max_pool1d( x, x.size(2), stride=x.size(2))
-                
-                #print('max_pool.shape:', max_pool.shape)  # 차원 확인
-                
-                channel_att_raw = self.mlp( max_pool )
+                pool = F.max_pool1d( x, x.size(2), stride=x.size(2))
             elif pool_type=='lp':
-                # lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                lp_pool = F.lp_pool1d( x, 2, x.size(2), stride=x.size(2))
-                channel_att_raw = self.mlp( lp_pool )
+                pool = F.lp_pool1d( x, 2, x.size(2), stride=x.size(2))
             elif pool_type=='lse':
-                # LSE pool only
-                lse_pool = utils.logsumexp_2d(x)
-                # lse_pool = logsumexp_1d(x)
-                channel_att_raw = self.mlp( lse_pool )
+                pool = logsumexp_2d(x)
+
+            channel_att_raw = self.mlp(pool)
 
             if channel_att_sum is None:
                 channel_att_sum = channel_att_raw
             else:
-                channel_att_sum = channel_att_sum + channel_att_raw
+                channel_att_sum += channel_att_raw
 
-        # scale = F.sigmoid(channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
-        scale = torch.sigmoid(channel_att_sum ).unsqueeze(2).expand_as(x)
+        scale = torch.sigmoid(channel_att_sum).unsqueeze(2).expand_as(x)
         return x * scale
 
 class ChannelPool(nn.Module):
     def forward(self, x):
-        return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
+        return torch.cat((
+            torch.max(x, dim=1, keepdim=True)[0],
+            torch.mean(x, dim=1, keepdim=True)
+        ), dim=1)
 
 class SpatialGate(nn.Module):
-    def __init__(self):
-        super(SpatialGate, self).__init__()
-        kernel_size = 7
+    def __init__(self, kernel_size=7):
+        super().__init__()
         self.compress = ChannelPool()
-        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
+        padding = (kernel_size - 1) // 2
+        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=padding, relu=False)
     def forward(self, x):
         x_compress = self.compress(x)
         x_out = self.spatial(x_compress)
-        scale = torch.sigmoid(x_out) # broadcasting
+        scale = torch.sigmoid(x_out)
         return x * scale
 
 class CBAM(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
-        super(CBAM, self).__init__()
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=('avg', 'max'), no_spatial=False):
+        super().__init__()
         self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
         self.no_spatial=no_spatial
         if not no_spatial:
             self.SpatialGate = SpatialGate()
     def forward(self, x):
-        x_out = self.ChannelGate(x)
+        out = self.ChannelGate(x)
         if not self.no_spatial:
-            x_out = self.SpatialGate(x_out)
-        return x_out
-    
+            out = self.SpatialGate(out)
+        return out
 
 class SELayer1D(nn.Module):
     def __init__(self, channel, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
@@ -278,8 +208,6 @@ class SELayer1D(nn.Module):
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1)
         return x * y.expand_as(x)
-
-        
 class SEBlock1D(nn.Module):
     def __init__(self, in_channels, out_channels, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
         super(SEBlock1D, self).__init__()
@@ -297,7 +225,6 @@ class SEBlock1D(nn.Module):
         out = self.se(out)
         out = self.relu1(out)  # Using relu1 for simplicity. Adjust as needed.
         return out
-    
 class ResidualSEBlock1D(nn.Module):
     def __init__(self, in_channels, out_channels, reduction=args.se_ratio, acti_type_1='LeakyReLU', acti_type_2='ReLU'):
         super(ResidualSEBlock1D, self).__init__()  # Fixed incorrect superclass reference
@@ -321,9 +248,7 @@ class ResidualSEBlock1D(nn.Module):
         out += shortcut
         out = self.relu1(out)  # Using relu1 for simplicity. Adjust as needed.
         return out
-
 class DeepRFT_SE_identity(nn.Module):
-
     def __init__(self, in_channels, out_channels, norm='backward',not_se=False,not_fft=False, residual_one=False, img_not_residual_one=False, spatial_dims=1):
         super(DeepRFT_SE_identity, self).__init__()
         ## kernel_size=1,3 각각 다른 이유??
@@ -385,6 +310,7 @@ class DeepRFT_SE_identity(nn.Module):
                 output = x + img + fft + self.resi_seblock(x)
         return output
 
+############################################### These three are duplicates of DeepRFT Class ?? do we need these (used in model.py)??
 class convRFT(nn.Module):
     def __init__(self, in_channels, out_channels, norm='backward'):
         super(convRFT, self).__init__()
@@ -398,11 +324,9 @@ class convRFT(nn.Module):
 
     def forward(self, x):
         # Fourier domain   
-        # _, _, W = x.shape
         fft = torch.fft.rfft(x, norm='ortho')
         fft = torch.cat([fft.real, fft.imag], dim=1) 
 
-        # fft = F.leaky_relu(self.norm2(self.fft_conv(fft)),0.01)
         fft = F.gelu(self.norm2(self.fft_conv(fft)))
         
         fft_real, fft_imag = torch.chunk(fft, 2, dim=1) 
@@ -416,21 +340,16 @@ class convRFT(nn.Module):
         tensor([(1.+3.j), (2.+4.j)])'''
         
         fft = torch.fft.irfft(fft, norm='ortho')
-        # fft = self.norm1(fft)
         # Image domain  
         
-        # img = F.leaky_relu(self.norm1(self.img_conv(x)),0.01)
         img = F.gelu(self.norm1(self.img_conv(x)))
 
         # Mixing (residual, image, fourier)
         output = img
         return output
-
-'''공부'''
 class fftRFT(nn.Module):
     def __init__(self, in_channels, out_channels, norm='backward'):
         super(fftRFT, self).__init__()
-        ## kernel_size=1,3 각각 다른 이유??
         self.img_conv  = nn.Sequential(nn.Conv1d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
                                        nn.Conv1d(out_channels, out_channels, kernel_size=3, stride=1, padding=1))
         self.fft_conv  = nn.Sequential(nn.Conv1d(in_channels*2, out_channels*2, kernel_size=1, stride=1, padding=0),
@@ -444,7 +363,6 @@ class fftRFT(nn.Module):
         fft = torch.fft.rfft(x, norm='ortho')
         fft = torch.cat([fft.real, fft.imag], dim=1) 
 
-        # fft = F.leaky_relu(self.norm2(self.fft_conv(fft)),0.01)
         fft = F.gelu(self.norm2(self.fft_conv(fft)))
         
         fft_real, fft_imag = torch.chunk(fft, 2, dim=1) 
@@ -467,8 +385,6 @@ class fftRFT(nn.Module):
         # Mixing (residual, image, fourier)
         output = fft
         return output
-
-'''공부'''
 class fftconvRFT(nn.Module):
     def __init__(self, in_channels, out_channels, norm='backward'):
         super(fftconvRFT, self).__init__()
@@ -509,6 +425,7 @@ class fftconvRFT(nn.Module):
         # Mixing (residual, image, fourier)
         output = img + fft
         return output
+#######################################################
 
 class DeepRFT(nn.Module):
     def __init__(self, in_channels, out_channels, norm='backward'):
@@ -553,7 +470,6 @@ class DeepRFT(nn.Module):
 
 
 class SimpleASPP(nn.Module):
-
     def __init__(
         self,
         spatial_dims: int,
@@ -579,12 +495,12 @@ class SimpleASPP(nn.Module):
             _conv = Conv[Conv.CONV, spatial_dims](
                 in_channels=in_channels, out_channels=conv_out_channels, kernel_size=k, dilation=d, padding=p
             )
-            # self.convs.append(_conv)
+
             self.convs.append(nn.Sequential(_conv,
                                              #DeepRFT(conv_out_channels, conv_out_channels)
                                              ))
             
-        out_channels = conv_out_channels * len(pads)  # final conv. output channels
+        out_channels = conv_out_channels * len(pads) 
         self.conv_k1 = Convolution(
             spatial_dims=spatial_dims,
             in_channels=out_channels,
@@ -610,7 +526,6 @@ class SimpleASPP(nn.Module):
         return x_out
 
 class SimpleASPP_deeprft(nn.Module):
-
     def __init__(
         self,
         spatial_dims: int,
@@ -636,12 +551,12 @@ class SimpleASPP_deeprft(nn.Module):
             _conv = Conv[Conv.CONV, spatial_dims](
                 in_channels=in_channels, out_channels=conv_out_channels, kernel_size=k, dilation=d, padding=p
             )
-            # self.convs.append(_conv)
+
             self.convs.append(nn.Sequential(_conv,
                                              DeepRFT(conv_out_channels, conv_out_channels)
                                              ))
             
-        out_channels = conv_out_channels * len(pads)  # final conv. output channels
+        out_channels = conv_out_channels * len(pads)  
         self.conv_k1 = Convolution(
             spatial_dims=spatial_dims,
             in_channels=out_channels,
