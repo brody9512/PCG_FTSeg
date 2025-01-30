@@ -1,0 +1,20 @@
+# Automatically normalize line endings
+* text=auto
+
+# Force specific file types to always use LF
+*.sh     text eol=lf
+*.py     text eol=lf
+*.js     text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+
+# Force specific file types to always use CRLF
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+
+# Binary files - no line-ending conversion
+*.png    binary
+*.jpg    binary
+*.gif    binary
+*.zip    binary
+*.exe    binary
