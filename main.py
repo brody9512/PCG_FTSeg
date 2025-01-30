@@ -131,11 +131,11 @@ if not infer:
 
 # gpus= "0,1,2,3"
 os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-#os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':16:8'
+
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = gpus
 os.environ["WANDB_API_KEY"] = '6cd6a2f58c8f4625faaea5c73fe110edab2be208'
-#%env WANDB_SILENT=true
+
 
 
 
@@ -151,34 +151,6 @@ print(device)
 print_config()
 
 
-
-
-
-from typing import Sequence, Union
-
-from monai.networks.layers.factories import Conv
-from monai.networks.nets.basic_unet import Down, TwoConv, UpCat, Pool
-from monai.utils import ensure_tuple_rep
-
-
-from typing import Optional, Sequence, Tuple, Union
-
-import torch
-import torch.nn as nn
-
-from monai.networks.blocks.convolutions import Convolution
-from monai.networks.layers import same_padding
-from monai.networks.layers.factories import Conv
-from monai.networks.blocks import UpSample
-
-
-
-def _upsample_like(src,tar):
-    src = F.upsample(src,size=tar.shape[2:],mode='linear')
-
-    return src
-
-
 net = BasicUNet(spatial_dims=1, in_channels=in_channels, out_channels=out_channels, features= (64, 64, 128, 256, 512, 512, 64), norm='instance', upsample='pixelshuffle',act='gelu')
 
 if not infer:    
@@ -191,11 +163,6 @@ if not infer:
     
     valid_ds2016 = PCGDataset(data_valid2016)
     valid_loader = DataLoader(valid_ds2016,batch_size=1,collate_fn=monai.data.utils.default_collate) 
-    # collate_fn 쓰는 이유: dataset이 고정된 길이가 아닐 경우, 
-    # batchsize를 2 이상으로 dataloader를 호출하면 dataloader에서 batch로 바로 못묶이고 에러가 난다
-    #collate_fn()은 variable-length input을 batch로 잘 묶어서 dataloader로 넘겨주는 역할을 한다.
-
-
 
 
 
@@ -210,7 +177,7 @@ y = torch.rand(1,3,64).round()
 lossfn(yhat,y)
 
 
-import torchmetrics
+
 
 
 learning_rate= 2e-4
@@ -221,38 +188,22 @@ model = SEGNET()
 trainer = pl.Trainer(
     log_every_n_steps = 1,
     gradient_clip_algorithm='norm',
-    # to prevent the gradients from becoming too large, which can cause numerical instability and poor model performance
-    # the gradients will be clipped based on their L2-norm (Euclidean norm).
+
     
     accumulate_grad_batches=4,
-    # In this case, gradients will be accumulated for 4 batches before updating the model weights. 
-    # This can be useful for training with larger effective batch sizes when GPU memory is limited. 
 
     sync_batchnorm=True,
     benchmark=True,
 
     accelerator='gpu',
     devices=-1,
-    #When set to -1, it means that all available devices (GPUs) will be used.
-    
-    #plugins=[DDPPlugin(find_unused_parameters=True)],  # Here's the change for find_unused_parameters
-    
+
     max_epochs=max_ep,
 
     strategy ='ddp_find_unused_parameters_true',
-    #strategy = DDPStrategy(find_unused_parameters=True)  
-    
-    #'ddp',
-    #strategy ='ddp_notebook',
-    
-    #strategy ='ddp', #파이썬 스크립트로 쓸 때는 이걸로!!
-    
-    # Each GPU processes its part of the mini-batch, 
-    # and the gradients are then averaged across GPUs before updating the model weights.
+
 
     check_val_every_n_epoch=1,
-    # validation will be performed every 1 epoch, 
-    # meaning that it will be run after every complete pass through the training dataset
 
 
     callbacks=[model.checkpoint_callback,LearningRateMonitor(), EarlyStopping('val_loss', patience=20), 
@@ -265,7 +216,6 @@ if infer:
 
 else:
     trainer.fit(model, train_loader, valid_loader)
-#        trainer.save_checkpoint(f'{path}model_{year}_toler{toler}_{comment}.ckpt')
 
 
 
