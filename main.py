@@ -7,9 +7,8 @@ import sklearn
 import sklearn.metrics
 import os
 import warnings
-warnings.filterwarnings(action='ignore')
+
 import sklearn
-import cv2
 import monai
 from monai.config import print_config
 import pytorch_lightning as pl
@@ -29,7 +28,10 @@ from dataset import *
 from utils import *
 from utils import DiceBCELoss, set_seed
 
+# Warnings
+warnings.filterwarnings(action='ignore')
 
+# Set environment (optional)
 os.environ["HTTP_PROXY"] = "http://192.168.45.100:3128"
 os.environ["HTTPS_PROXY"] = "http://192.168.45.100:3128"
 
@@ -81,13 +83,13 @@ args = get_args()
 # nofolder=args.nofolder
 # ver = args.ver
 # gpus = args.gpu
-# in_channels = 2
-# out_channels = 4
-# minsize=50
-# thr=0.5
+in_channels = 2
+out_channels = 4
+minsize=50
+thr=0.5
 # train_batch= args.batch #64
-# version=2
-# max_ep=250
+version=2
+max_ep=250
 # seed_=args.seed
 
 print(f'pytorch_lightning version : {pl.__version__}')
@@ -181,13 +183,13 @@ net = BasicUNet(spatial_dims=1, in_channels=in_channels, out_channels=out_channe
 
 if not infer:    
     
-    test_ds2016 = dataset(data_test2016)
+    test_ds2016 = PCGDataset(data_test2016)
     test_loader = DataLoader(test_ds2016,batch_size=1,collate_fn=monai.data.utils.default_collate)
 
-    train_ds2016 = dataset(data_train2016,'train')
-    train_loader = DataLoader(train_ds2016,shuffle=True,batch_size=train_batch,drop_last=True)
+    train_ds2016 = PCGDataset(data_train2016,'train')
+    train_loader = DataLoader(train_ds2016,shuffle=True,batch_size=args.batch,drop_last=True)
     
-    valid_ds2016 = dataset(data_valid2016)
+    valid_ds2016 = PCGDataset(data_valid2016)
     valid_loader = DataLoader(valid_ds2016,batch_size=1,collate_fn=monai.data.utils.default_collate) 
     # collate_fn 쓰는 이유: dataset이 고정된 길이가 아닐 경우, 
     # batchsize를 2 이상으로 dataloader를 호출하면 dataloader에서 batch로 바로 못묶이고 에러가 난다
@@ -284,7 +286,7 @@ if not not_2016:
     data_test2016 = data2016[:336] #training-a data만 긁어옴
     data_train2016 = data2016[336:]
     
-    test_ds2016 = dataset(data_test2016)
+    test_ds2016 = PCGDataset(data_test2016)
     test_loader = DataLoader(test_ds2016,batch_size=1,collate_fn=monai.data.utils.default_collate)
     
     print('\n ############# toler 40 Internal 2016 start ############# \n')
@@ -318,8 +320,8 @@ if not not_2022:
 
     data_test2016=data2016
             
-    test_ds2016 = dataset(data_test2016)
-    #etest_ds2016 = dataset(edata_test2016)
+    test_ds2016 = PCGDataset(data_test2016)
+    #etest_ds2016 = PCGDataset(edata_test2016)
     test_loader_2022 = DataLoader(test_ds2016,batch_size=1,collate_fn=monai.data.utils.default_collate)
 
     trainer.test(model, test_loader_2022, ckpt_path=os.path.join(infer_pth,'best.ckpt'))
@@ -366,7 +368,7 @@ if not not_amc:
 
     data_test2016=data2016
             
-    test_ds2016 = dataset(data_test2016)
+    test_ds2016 = PCGDataset(data_test2016)
     test_loader_amc = DataLoader(test_ds2016,batch_size=1,collate_fn=monai.data.utils.default_collate)
 
     trainer.test(model, test_loader_amc, ckpt_path=os.path.join(infer_pth,'best.ckpt'))

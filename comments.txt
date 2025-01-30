@@ -1,0 +1,9 @@
+### Done ###
+config.py
+dataset.py
+utils.py
+
+### Needs work ###
+model.py
+modules.py
+main.py

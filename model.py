@@ -19,117 +19,10 @@ from pytorch_lightning.callbacks import *
 from pytorch_lightning.loggers import *
 
 # Import from Directory Architecture
-from config import get_args
 from modules import DeepRFT, SimpleASPP, SimpleASPP_deeprft, DeepRFT_SE_identity, NLBlockND, CBAM, fftRFT, fftconvRFT, convRFT
 from utils import DiceBCELoss, eval_metrics
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-args = get_args()
-
-not_amc=args.not_amc
-not_2022=args.not_2022
-not_2016=args.not_2016
-
-# 인자 값들을 변수에 할당
-featureLength = args.featureLength
-target_sr = args.target_sr
-lowpass = args.lowpass
-year = args.year
-
-
-de_conv_=args.de_conv_
-de_fft=args.de_fft
-de_fftconv=args.de_fftconv
-
-request_infer=args.request_infer
-request_infer_path=args.request_infer_path
-
-de_aspp = args.de_aspp
-de_deeprft = args.de_deeprft
-de_se= args.de_se
-de_nl= args.de_nl
-de_cbam= args.de_cbam
-
-not_se=args.not_se
-not_fft=args.not_fft
-
-se_ratio = args.se_ratio
-dr_se_seq_adverse = args.dr_se_seq_adverse
-dr_se_identity = args.dr_se_identity
-
-
-de_dr_se_identity=args.de_dr_se_identity
-
-twice=args.twice
-third=args.third
-fourth=args.fourth
-
-
-conv_=args.conv_
-fft=args.fft
-fftconv=args.fftconv
-
-nl_ = args.nl
-cbam_ = args.cbam
-
-seblock_ = args.se
-aspp_ = args.aspp
-deeprft_ = args.deeprft
-mha_=args.mha
-
-residual_one=args.residual_one
-img_not_residual_one=args.img_not_residual_one
-
-
-k_fold_ = args.k_fold
-
-toler=args.toler
-
-infer = args.infer
-infer_2022 = args.infer_2022
-nofolder=args.nofolder
-
-ver = args.ver
-gpus = args.gpu
-
-in_channels = 2
-out_channels = 4
-minsize=50
-thr=0.5
-
-version=2
-
-max_ep=250
-learning_rate= 2e-4
-
-
-comment=f'ver{version}_d{target_sr}_v{ver}_low{lowpass}_dRFT_{deeprft_}_de_dRFT_{de_deeprft}_aspp_{aspp_}_mha_{mha_}_se_{seblock_}_de_se_{de_se}_nl_{nl_}_cbam_{cbam_}_resione_{residual_one}_twice_{twice}_dr_se_iden_{dr_se_identity}_de_drse_iden_{de_dr_se_identity}_nose_{not_se}_nofft_{not_fft}_drse_seq_ad_{dr_se_seq_adverse}_se_r_{se_ratio}'
-
-infer_pth=f'/workspace/data/lightning_logs/version_{ver}/checkpoints/'
-
-
-if not infer:
-    path=f'/workspace/data/pcg_2016_jupyters/result/{year}_toler{toler}_{comment}/'
-
-if not not_2016:
-    year = 2016 
-    path=f'/workspace/data/pcg_2016_jupyters/result/{year}_toler{toler}_{comment}/'
-
-if not not_2022:
-    print('\n toler 40 External 2022 start \n')
-    year = 2022
-    path=f'/workspace/data/pcg_2016_jupyters/result/{year}_toler{toler}_{comment}/'
-
-if not not_amc:
-    print('\n toler 40 External amc start \n')
-    year = 'amc'
-    path=f'/workspace/data/pcg_2016_jupyters/result/{year}_toler{toler}_{comment}/'
-
-
-
-'''공부'''
 class Down(nn.Sequential):
     """maxpooling downsampling and two convolutions."""
 
@@ -1181,8 +1074,6 @@ class UpCat(nn.Module):
 
         return x
     
-
-
 class SEGNET(pl.LightningModule):
     def __init__(self):
         super(SEGNET, self).__init__()
@@ -1788,6 +1679,4 @@ class BasicUNet(nn.Module):
         
         logits = torch.sigmoid(logits/.2) #temperature scaling
         return logits
-
-net = BasicUNet(spatial_dims=1, in_channels=in_channels, out_channels=out_channels, features= (64, 64, 128, 256, 512, 512, 64), norm='instance', upsample='pixelshuffle',act='gelu')
 
