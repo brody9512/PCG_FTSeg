@@ -10,5 +10,7 @@ main.py
 
 
 ### Comments ###
-fft on modules.py
+data used:
+1 for internal: public 2016
+2 for external: public 2022, AMC (priv data so can't be shared)
  
