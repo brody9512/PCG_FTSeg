@@ -2,7 +2,7 @@ import monai
 import numpy as np
 import torch 
 
-# Import from Directory Architecture
+# Local imports
 from utils import augment_neurokit, zscore
 
 class PCGDataset():

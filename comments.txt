@@ -2,15 +2,16 @@
 config.py
 dataset.py
 utils.py
-
-### Needs work ###
 model.py
 modules.py
 main.py
 
+### Needs work ###
+n/a
+
 
 ### Comments ###
 data used:
-1 for internal: public 2016
-2 for external: public 2022, AMC (priv data so can't be shared)
+1 for internal (train / val): public 2016
+2 for external (test): public 2022, AMC (priv data so can't be shared)
  

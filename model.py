@@ -1,5 +1,4 @@
 import datetime
-import monai
 from monai.networks.layers.factories import Conv
 from monai.networks.nets.basic_unet import Down, TwoConv, UpCat, Pool
 from monai.utils import ensure_tuple_rep
@@ -18,7 +17,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import *
 from pytorch_lightning.loggers import *
 
-# Import from Directory Architecture
+# Local imports
 from modules import BasicConv, fftRFT
 from utils import DiceBCELoss, eval_metrics
 
@@ -28,7 +27,6 @@ from utils import DiceBCELoss, eval_metrics
 #
 class Down(nn.Sequential):
     """maxpooling downsampling and two convolutions."""
-
     def __init__(
         self,
         spatial_dims: int,
@@ -38,7 +36,7 @@ class Down(nn.Sequential):
         norm: Union[str, tuple],
         bias: bool,
         dropout: Union[float, tuple] = 0.0,
-        sa = False,  # This is a default argument in your __init__
+        sa = False,  # This is a default argument in __init__
         
         twice=False,
         fft=False   
@@ -46,7 +44,7 @@ class Down(nn.Sequential):
         super().__init__()
         self.max_pooling = Pool["MAX", spatial_dims](kernel_size=2)
         self.fftRFT_=fft 
-        self.sa_ = sa  # Define sa as a class attribute
+        self.sa = sa 
         self.twice = twice
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
@@ -184,7 +182,7 @@ class UpCat(nn.Module):
 class BasicUNet(nn.Module):
     def __init__(
         self,
-        spatial_dims: int = 3, # spatial_dims, in_channels, features, norm, upsample changed, why? 
+        spatial_dims: int = 3,
         in_channels: int = 1,
         out_channels: int = 4,
         features: Sequence[int] = (32, 32, 64, 128, 256, 32),
@@ -265,7 +263,7 @@ class SEGNET(pl.LightningModule):
                  thr: float = 0.5,
                  device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
                  # placeholders for the old code that used path/infer_pth/etc.
-                 infer_path: str = "./",
+                 infer_path: str = "/workspace/data/lightning_logs/version_{ver}/checkpoints/",
                  path: str = "./",
                  year: int = 2000,
                  toler: int = 40,
