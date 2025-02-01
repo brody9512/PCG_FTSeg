@@ -19,6 +19,7 @@ class BasicConv(nn.Module):
             x = self.bn(x)
         if self.relu is not None:
             x = self.relu(x)
+            
         return x
 
 class fftRFT(nn.Module):
