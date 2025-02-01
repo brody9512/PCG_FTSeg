@@ -1,89 +1,62 @@
-##(js)##
-from scipy.signal import butter, lfilter, filtfilt
-import librosa as lb
-import numpy as np
 import os
 import glob
+import copy
+import numpy as np
 import scipy
+import scipy.io
+import librosa as lb
+from scipy.signal import butter, lfilter, filtfilt, resample_poly
+from tqdm import trange
 
-
+# -------------------- Filter Functions --------------------
 def butter_bandpass(lowcut, highcut, fs, order=5):
-    nyq = 0.5 * fs  # 나이퀴스트 이론 :
+    """Create a Butterworth bandpass filter."""
+    nyq = 0.5 * fs
     low = lowcut / nyq
     high = highcut / nyq
     b, a = butter(order, [low, high], btype='band')
     return b, a
-
-def butter_bandpass_filter(data, lowcut=None, highcut=None, fs=None, order=5):
-    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-
-
-def butter_bandpass(lowcut, highcut, fs, order=5):
-    nyq = 0.5 * fs  # 나이퀴스트 이론 :
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    return b, a
-
-
 
 def butter_bandpass_filter(data, fs, lowcut=25, highcut=400, order=5):
+    """Apply a Butterworth bandpass filter to the data."""
     b, a = butter_bandpass(lowcut, highcut, fs, order=order)
     y = lfilter(b, a, data)
     return y
 
-# y = filtfilt(b,a,x)는 입력 데이터 x를 순방향과 역방향 모두로 처리하여 영위상 디지털 필터링을 수행합니다.
-
-
-
-#cutoff는 이 주파수 이상에서 신호를 감쇠시키고자 하는 값입니다.
-
-#Nyquist 주파수는 fs의 절반인 샘플링 비율의 절반을 계산하고 nyq에 저장합니다. 
-# 이것은 제공된 샘플링 비율로 정확하게 표현할 수 있는 최대 주파수
-
-#fs는 데이터의 샘플링 비율입니다.
 def butter_lowpass_filter(data, fs, cutoff, order):
-    nyq = 0.5 * fs  # Nyquist Frequency 
-
-    #cutoff 주파수는 Nyquist 주파수로 정규화되어 butter 함수에 의해 필요로하는 0과 1 사이에 있도록 보장합니다. 
-    # 이 normal_cutoff 값은 디지털 필터의 중요한 주파수 명세 
-    
-    # normal_cutoff는 1보다 낮아야 한다
+    """Apply a Butterworth lowpass filter to the data."""
+    nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq
-    # the normal_cutoff should be between 0 and 1
     b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    #butter:버터워스 필터는 통과 대역에서 가능한 한 평탄한 주파수 응답을 갖도록 설계된 일종의 신호 처리 필터입니다.
     y = filtfilt(b, a, data)
     return y
 
-
-def load_data_2016(wav_path,seg_path,resampling,low=None,high=None,lowpass=None,
-                   downsampling=False,bandpass=False,up_=None,down_=None):
-    # Load wav file
+# -------------------- Data Loading Functions --------------------
+def load_data_2016(wav_path, seg_path, resampling, low=None, high=None, lowpass=None,
+                   downsampling=False, bandpass=False):
+    """
+    Load and process a 2016 wav file and its corresponding segmentation annotation.
+    """
+    # Load wav file with original sampling rate
     wav, orig_sr = lb.load(wav_path, sr=None)
 
+    # Downsample if requested
     if downsampling:
-        # Downsample to 1000 Hz using polyphase antialiasing filter
-        wav = resample_poly(wav, up=resampling, down=orig_sr)  # original sr was 2000
+        wav = resample_poly(wav, up=resampling, down=orig_sr)
 
+    # Apply filtering
     if bandpass:
-        # Apply Butterworth bandpass filter
         wav = butter_bandpass_filter(wav, fs=resampling, lowcut=low, highcut=high, order=5)
     else:
-        # Apply Butterworth lowpass filter
         wav = butter_lowpass_filter(wav, fs=resampling, cutoff=lowpass, order=5)
 
+    # Load segmentation from MATLAB file
     df = scipy.io.loadmat(seg_path)['state_ans']
     seg = np.zeros_like(wav)
-
-    for idx in range(len(df)-1):
-        start = int(df[idx,0][0,0]*resampling/orig_sr)  # convert seconds to sample indices
-        end = int(df[idx+1,0][0,0]*resampling/orig_sr)  # convert seconds to sample indices
-        cls = df[idx,1][0,0][0]
-
+    for idx in range(len(df) - 1):
+        start = int(df[idx, 0][0, 0] * resampling / orig_sr)
+        end = int(df[idx + 1, 0][0, 0] * resampling / orig_sr)
+        cls = df[idx, 1][0, 0][0]
         if cls == 'diastole':
             cls = 1
         elif cls == 'S1':
@@ -92,242 +65,208 @@ def load_data_2016(wav_path,seg_path,resampling,low=None,high=None,lowpass=None,
             cls = 3
         elif cls == 'S2':
             cls = 4
-
         seg[start:end] = int(cls)
 
-    zeros = np.where(seg!=0)[0]
-    seg = seg[zeros[0]:zeros[-1]]
-    wav = wav[zeros[0]:zeros[-1]]
+    # Trim leading and trailing zeros
+    nonzero = np.where(seg != 0)[0]
+    if nonzero.size == 0:
+        raise ValueError("Segmentation array is empty after filtering.")
+    seg = seg[nonzero[0]:nonzero[-1]]
+    wav = wav[nonzero[0]:nonzero[-1]]
 
     return wav, seg
 
-##(js)##
-import tqdm.notebook as tqdm
-
-def process_data(low, high, sampling, feature_length):
-    total_data = []
-
-    for idx in tqdm.trange(len(a_01)):
-        wav, seg = load_data_2016(a_01[idx], b_01[idx], sampling, low=low, high=high, bandpass=True, downsampling=True, up_=None, down_=None)
-        total_data.append({'wav': wav, 'seg': seg, 'fname': a_01[idx].split('/')[-1]})
-
-    total_feature_length_data = []
-    for t in total_data:
-        if len(t['wav']) >= feature_length:
-            total_feature_length_data.append(t)
-
-    print(len(total_feature_length_data))
-    np.save(f'/home/brody9512/workspace/changhyun/PCG_infer/PhysioNet2016_{sampling}Hz_{low}_{high}_fe_{feature_length}.npy', total_feature_length_data)
-
-# Define the parameter combinations
-parameter_combinations = [
-    # (20, 200, 500, round(409.6*5)),
-    # (20, 200, 900, round(409.6*9)),
-    # (20, 200, 800, round(409.6*8)),
-    # (20, 200, 700, round(409.6*7)),
-    # (20, 200, 600, round(409.6*6)),
-
-    (20, 250, 1000, 6144),
-    (20, 400, 1000, 6144),
-    (15, 250, 1000, 6144),
-    (15, 400, 1000, 6144),
-    # (20, 200, 1000, 5120),
-    # (20, 200, 1000, 3072),
-    # (20, 200, 1000, 2048),
-    # (20, 200, 500, 2048),
-]
-
-
-# Process data for each parameter combination
-for low_, high_, sampling_, feature_length_ in parameter_combinations:
-    process_data(low_, high_, sampling_, feature_length_)
-
-##(js)##
-from scipy.signal import butter, lfilter, filtfilt
-from scipy.signal import resample_poly
-
-def butter_bandpass(lowcut, highcut, fs, order=5):
-    nyq = 0.5 * fs  # 나이퀴스트 이론 :
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    return b, a
-
-def butter_bandpass_filter(data, lowcut=None, highcut=None, fs=None, order=5):
-    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-
-
-def butter_bandpass(lowcut, highcut, fs, order=5):
-    nyq = 0.5 * fs  # 나이퀴스트 이론 :
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    return b, a
-
-
-
-def butter_bandpass_filter(data, fs, lowcut=25, highcut=400, order=5):
-    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-# y = filtfilt(b,a,x)는 입력 데이터 x를 순방향과 역방향 모두로 처리하여 영위상 디지털 필터링을 수행합니다.
-
-
-
-#cutoff는 이 주파수 이상에서 신호를 감쇠시키고자 하는 값입니다.
-
-#Nyquist 주파수는 fs의 절반인 샘플링 비율의 절반을 계산하고 nyq에 저장합니다. 
-# 이것은 제공된 샘플링 비율로 정확하게 표현할 수 있는 최대 주파수
-
-#fs는 데이터의 샘플링 비율입니다.
-def butter_lowpass_filter(data, fs, cutoff, order):
-    nyq = 0.5 * fs  # Nyquist Frequency 
-
-    #cutoff 주파수는 Nyquist 주파수로 정규화되어 butter 함수에 의해 필요로하는 0과 1 사이에 있도록 보장합니다. 
-    # 이 normal_cutoff 값은 디지털 필터의 중요한 주파수 명세 
-    
-    # normal_cutoff는 1보다 낮아야 한다
-    normal_cutoff = cutoff / nyq
-    # the normal_cutoff should be between 0 and 1
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    #butter:버터워스 필터는 통과 대역에서 가능한 한 평탄한 주파수 응답을 갖도록 설계된 일종의 신호 처리 필터입니다.
-    y = filtfilt(b, a, data)
-    return y
-
-
-def load_data_2016_amc(sig_path,resampling, orig_sr=4000,low=None,high=None,lowpass=None,
-                   downsampling=False,bandpass=False,up_=None,down_=None):
-    
-        
+def load_data_amc(sig_path, resampling, orig_sr=4000, low=None, high=None, lowpass=None,
+                  downsampling=False, bandpass=False):
+    """
+    Load and process an AMC npz file containing the signal and segmentation indices.
+    """
     data = np.load(sig_path)
-
-
     sig = data['sig']
-    # Make sure your signal is of dtype float32
-    sig = np.float32(sig / np.max(np.abs(sig)))
-    
-    # # Load sig file
-    # sig, orig_sr = lb.load(sig_path, sr=None)
+    sig = np.float32(sig / np.max(np.abs(sig)))  # Normalize
 
     if downsampling:
-        # Downsample to 1000 Hz using polyphase antialiasing filter
-        sig = resample_poly(sig, up=resampling, down=orig_sr)  # original sr was 2000
+        sig = resample_poly(sig, up=resampling, down=orig_sr)
 
     if bandpass:
-        # Apply Butterworth bandpass filter
         sig = butter_bandpass_filter(sig, fs=resampling, lowcut=low, highcut=high, order=5)
     else:
-        # Apply Butterworth lowpass filter
         sig = butter_lowpass_filter(sig, fs=resampling, cutoff=lowpass, order=5)
 
-
+    # Extract segmentation indices
     s1 = data['s1']
     s2 = data['s2']
-    sys = []
-    dia = []
+    sys_list = []
+    dia_list = []
 
-    # Loop through s1 to find the corresponding s2 value that matches the criteria for sys_idx, with rounding
+    # For systole: for each s1, find the nearest s2 that is not lower than s1
     for i in range(len(s1)):
-        # Find the s2 value that is closest but not lower than the current s1 value
         s2_candidates = s2[s2 >= s1[i]]
         if len(s2_candidates) > 0:
             s2_closest = s2_candidates[0]
-            sys_idx_rounded = round((s1[i] + s2_closest) / 2)
-            sys.append(sys_idx_rounded)
+            sys_list.append(round((s1[i] + s2_closest) / 2))
 
-    # Loop through s2 to find the corresponding s1 value that matches the criteria for dia_idx, with rounding
+    # For diastole: for each s2, find the nearest s1 that is greater than s2
     for i in range(len(s2)):
-        # Find the s1 value that is closest but not lower than the current s2 value
         s1_candidates = s1[s1 > s2[i]]
         if len(s1_candidates) > 0:
             s1_closest = s1_candidates[0]
-            dia_idx_rounded = round((s2[i] + s1_closest) / 2)
-            dia.append(dia_idx_rounded)
+            dia_list.append(round((s2[i] + s1_closest) / 2))
 
-    # Convert lists to numpy arrays for element-wise operations
     s1 = np.array(s1)
     s2 = np.array(s2)
-    sys = np.round(sys).astype(int)
-    dia = np.round(dia).astype(int)  # assuming dia calculation logic
+    sys_array = np.array(sys_list)
+    dia_array = np.array(dia_list)
 
-
-    # # Resample the signal
-    # sig = librosa.resample(sig, orig_sr=orig_sr, target_sr=resampling)
-
-    # Scaling factor for the indices
+    # Adjust indices to new sampling rate
     scale_factor = resampling / orig_sr
-
-    # Adjust indices to the new sample rate
     s1_resampled = np.round(s1 * scale_factor).astype(int)
     s2_resampled = np.round(s2 * scale_factor).astype(int)
-    sys_resampled = np.round(sys * scale_factor).astype(int)
-    dia_resampled = np.round(dia * scale_factor).astype(int)
+    sys_resampled = np.round(sys_array * scale_factor).astype(int)
+    dia_resampled = np.round(dia_array * scale_factor).astype(int)
 
     return sig, s1_resampled, s2_resampled, sys_resampled, dia_resampled
 
-##(js)##
-a_000 = glob('/home/brody9512/workspace/changhyun/PCG_infer/AMC_heart_sound_labeled_data/*/*.npz')[0]
-sig, s1_resampled, s2_resampled, sys_resampled, dia_resampled = load_data_2016_amc(a_000,1000,orig_sr=4000, low=20, high=200, bandpass=True, downsampling=True, up_=None, down_=None)
+# -------------------- Preprocessing Functions --------------------
+def preprocess_2016_data():
+    """
+    Preprocess the 2016 data by matching wav files with annotations,
+    filtering out mismatches and errors, and saving valid examples.
+    """
+    # Define directories for audio and annotation files
+    data_dirs = [
+        './training/training-a',
+        './training/training-b',
+        './training/training-c',
+        './training/training-d',
+        './training/training-e',
+        './training/training-f'
+    ]
+    annot_dirs = [
+        './annotations/annotations/hand_corrected/training-a_StateAns',
+        './annotations/annotations/hand_corrected/training-b_StateAns',
+        './annotations/annotations/hand_corrected/training-c_StateAns',
+        './annotations/annotations/hand_corrected/training-d_StateAns',
+        './annotations/annotations/hand_corrected/training-e_StateAns',
+        './annotations/annotations/hand_corrected/training-f_StateAns'
+    ]
 
-print(s1_resampled,'\n', sys_resampled,'\n', s2_resampled,'\n', dia_resampled)
-seg = {'s1': s1_resampled,'sys': sys_resampled,'s2': s2_resampled,'dia': dia_resampled}
-print(seg)
+    wav_files_group = []
+    seg_files_group = []
 
+    for i in range(len(data_dirs)):
+        wav_files = glob.glob(os.path.join(data_dirs[i], '*.wav'))
+        seg_files = glob.glob(os.path.join(annot_dirs[i], '*'))
+        print(f"Group {i}: Found {len(wav_files)} wav files and {len(seg_files)} annotation files.")
 
+        # Extract file identifiers
+        wav_ids = [os.path.splitext(os.path.basename(s))[0] for s in wav_files]
+        seg_ids = [os.path.basename(s).split('_')[0] for s in seg_files]
 
-# Initialize the segmentation array with default value 4
-seg = np.full_like(sig, 1)
+        # Identify missing annotations
+        missing_ids = [num for num in wav_ids if num not in seg_ids]
+        print(f"Group {i}: {len(missing_ids)} wav files missing annotations.")
 
-# Assign the specific index positions their respective values
-seg[s1_resampled] = 2  # Setting indices from s1_resampled to 1
-seg[sys_resampled] = 3  # Setting indices from sys_resampled to 2
-seg[s2_resampled] = 4  # Setting indices from s2_resampled to 3
-seg[dia_resampled] = 1  # Setting indices from dia_resampled to 4
+        # Remove wav files that lack a matching annotation
+        for mid in missing_ids:
+            wav_path = os.path.join(data_dirs[i], f'{mid}.wav')
+            if wav_path in wav_files:
+                wav_files.remove(wav_path)
 
-# Prepare the dictionary to return or use
-seg_dict = {'s1': s1_resampled, 'sys': sys_resampled, 's2': s2_resampled, 'dia': dia_resampled, 'seg': seg}
+        wav_files_group.append(wav_files)
+        seg_files_group.append(seg_files)
+        print(f"Group {i}: {len(wav_files)} wav files remain after removal.")
 
-# Example of how to print or use the seg_dict
-print("Segmentation array:", seg_dict['seg'][600:650])
-print("Lengths: s1 =", len(seg_dict['s1']), "sys =", len(seg_dict['sys']), "s2 =", len(seg_dict['s2']), "dia =", len(seg_dict['dia']))
+    # Flatten and sort lists to (hopefully) ensure matching order
+    wav_files_flat = sorted([f for sublist in wav_files_group for f in sublist])
+    seg_files_flat = sorted([f for sublist in seg_files_group for f in sublist])
 
-
-##(js)##
-
-# Fetch the list of files
-a_000 = glob('/home/brody9512/workspace/changhyun/PCG_infer/amc_data/20240417_AMC_labeled_heartsound/*/*.npz')
-print(f"Number of files found: {len(a_000)}")
-if len(a_000) == 0:
-    raise ValueError("No .npz files found. Check your directory path and file type.")
-
-def process_data(low, high, sampling, feature_length):
-    total_data = []
-    for idx in tqdm.trange(len(a_000)):
-        file_path = a_000[idx]
-        if os.path.isdir(file_path):
-            continue  # Skip directories, just in case
-        #print(f"Processing file: {file_path}")  # Debugging line
+    # Validate that each file pair can be loaded
+    valid_wav_files = []
+    valid_seg_files = []
+    for wav_path, seg_path in zip(wav_files_flat, seg_files_flat):
         try:
-            sig, s1_resampled, s2_resampled, sys_resampled, dia_resampled = load_data_2016_amc(file_path, sampling, orig_sr=4000, low=low, high=high, bandpass=True, downsampling=True, up_=None, down_=None)
+            _ = load_data_2016(wav_path, seg_path, resampling=1000, low=20, high=250,
+                               bandpass=True, downsampling=True)
+            valid_wav_files.append(wav_path)
+            valid_seg_files.append(seg_path)
+        except Exception as e:
+            print(f"Skipping {wav_path} due to error: {e}")
+
+    total_data = []
+    for wav_path, seg_path in zip(valid_wav_files, valid_seg_files):
+        try:
+            wav, seg = load_data_2016(wav_path, seg_path, resampling=1000, low=20, high=250,
+                                      bandpass=True, downsampling=True)
+            total_data.append({'wav': wav, 'seg': seg, 'fname': os.path.basename(wav_path)})
+        except Exception as e:
+            print(f"Error processing {wav_path}: {e}")
+
+    # Filter out examples shorter than the desired feature length
+    feature_length = 6144  # Adjust this value as needed
+    total_feature_length_data = [d for d in total_data if len(d['wav']) >= feature_length]
+    print(f"2016 Data: {len(total_feature_length_data)} samples after filtering (feature length >= {feature_length}).")
+
+    output_path = f'PhysioNet2016_1000Hz_20_250_fe_{feature_length}.npy'
+    np.save(output_path, total_feature_length_data)
+    print(f"Saved preprocessed 2016 data to {output_path}.")
+
+def preprocess_amc_data():
+    """
+    Preprocess AMC data from .npz files, applying filtering and resampling,
+    and save only those examples meeting the feature length criteria.
+    """
+    # Fetch AMC files
+    amc_files = glob.glob('/home/brody9512/workspace/changhyun/PCG_infer/amc_data/20240417_AMC_labeled_heartsound/*/*.npz')
+    print(f"Found {len(amc_files)} AMC files.")
+    if not amc_files:
+        raise ValueError("No .npz files found. Check your directory path and file type.")
+
+    total_data = []
+    for idx in trange(len(amc_files)):
+        file_path = amc_files[idx]
+        if os.path.isdir(file_path):
+            continue
+        try:
+            sig, s1_resampled, s2_resampled, sys_resampled, dia_resampled = load_data_amc(
+                file_path, resampling=1000, orig_sr=4000, low=20, high=200,
+                bandpass=True, downsampling=True
+            )
         except Exception as e:
             print(f"Error processing file {file_path}: {e}")
             continue
 
+        # Build segmentation array
         seg = np.full_like(sig, 1)
-        seg[dia_resampled] = 1
+        seg[dia_resampled] = 1 # Note: The AMC code originally set dia indices to 1 (same as default).
         seg[s1_resampled] = 2
         seg[sys_resampled] = 3
         seg[s2_resampled] = 4
-        total_data.append({'wav': sig, 'dia': dia_resampled, 's1': s1_resampled, 'sys': sys_resampled, 's2': s2_resampled,  'seg': seg, 'fname': file_path.split('/')[-1]})
+        total_data.append({
+            'wav': sig,
+            'dia': dia_resampled,
+            's1': s1_resampled,
+            'sys': sys_resampled,
+            's2': s2_resampled,
+            'seg': seg,
+            'fname': os.path.basename(file_path)
+        })
 
-    total_feature_length_data = [t for t in total_data if len(t['wav']) >= feature_length]
-    print(len(total_feature_length_data))
-    np.save(f'/home/brody9512/workspace/changhyun/PCG_infer/amc_{sampling}Hz_{low}_{high}_fe_{feature_length}.npy', total_feature_length_data)
+    feature_length = 6144  # Adjust this value as needed
+    total_feature_length_data = [d for d in total_data if len(d['wav']) >= feature_length]
+    print(f"AMC Data: {len(total_feature_length_data)} samples after filtering (feature length >= {feature_length}).")
 
-parameter_combinations = [(20, 200, 1000, 6144)]
-for low_, high_, sampling_, feature_length_ in parameter_combinations:
-    process_data(low_, high_, sampling_, feature_length_)
+    output_path = f'amc_1000Hz_20_200_fe_{feature_length}.npy'
+    np.save(output_path, total_feature_length_data)
+    print(f"Saved preprocessed AMC data to {output_path}.")
+
+# -------------------- Main Function --------------------
+def main():
+    print("Starting preprocessing for 2016 data...")
+    preprocess_2016_data()
+
+    print("\nStarting preprocessing for AMC data...")
+    preprocess_amc_data()
+
+if __name__ == '__main__':
+    main()
