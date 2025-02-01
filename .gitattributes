@@ -1,4 +1,4 @@
-# Automatically normalize line endings
+# Automatically normalize line endings 
 * text=auto
 
 # Force specific file types to always use LF
