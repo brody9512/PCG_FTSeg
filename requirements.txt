@@ -7,3 +7,5 @@ scikit-learn>=1.0.0
 neurokit2>=0.1.9
 livelossplot>=0.5.5
 matplotlib>=3.4.0
+librosa>=0.10.2
+natsort>=8.4.0

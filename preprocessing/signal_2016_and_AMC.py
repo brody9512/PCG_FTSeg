@@ -1,6 +1,5 @@
 import os
 import glob
-import copy
 import numpy as np
 import scipy
 import scipy.io
@@ -8,9 +7,7 @@ import librosa as lb
 from scipy.signal import butter, lfilter, filtfilt, resample_poly
 from tqdm import trange
 
-# -------------------- Filter Functions --------------------
 def butter_bandpass(lowcut, highcut, fs, order=5):
-    """Create a Butterworth bandpass filter."""
     nyq = 0.5 * fs
     low = lowcut / nyq
     high = highcut / nyq
@@ -18,39 +15,29 @@ def butter_bandpass(lowcut, highcut, fs, order=5):
     return b, a
 
 def butter_bandpass_filter(data, fs, lowcut=25, highcut=400, order=5):
-    """Apply a Butterworth bandpass filter to the data."""
     b, a = butter_bandpass(lowcut, highcut, fs, order=order)
     y = lfilter(b, a, data)
     return y
 
 def butter_lowpass_filter(data, fs, cutoff, order):
-    """Apply a Butterworth lowpass filter to the data."""
     nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq
     b, a = butter(order, normal_cutoff, btype='low', analog=False)
     y = filtfilt(b, a, data)
     return y
 
-# -------------------- Data Loading Functions --------------------
 def load_data_2016(wav_path, seg_path, resampling, low=None, high=None, lowpass=None,
                    downsampling=False, bandpass=False):
-    """
-    Load and process a 2016 wav file and its corresponding segmentation annotation.
-    """
-    # Load wav file with original sampling rate
     wav, orig_sr = lb.load(wav_path, sr=None)
 
-    # Downsample if requested
     if downsampling:
         wav = resample_poly(wav, up=resampling, down=orig_sr)
 
-    # Apply filtering
     if bandpass:
         wav = butter_bandpass_filter(wav, fs=resampling, lowcut=low, highcut=high, order=5)
     else:
         wav = butter_lowpass_filter(wav, fs=resampling, cutoff=lowpass, order=5)
 
-    # Load segmentation from MATLAB file
     df = scipy.io.loadmat(seg_path)['state_ans']
     seg = np.zeros_like(wav)
     for idx in range(len(df) - 1):
@@ -67,7 +54,6 @@ def load_data_2016(wav_path, seg_path, resampling, low=None, high=None, lowpass=
             cls = 4
         seg[start:end] = int(cls)
 
-    # Trim leading and trailing zeros
     nonzero = np.where(seg != 0)[0]
     if nonzero.size == 0:
         raise ValueError("Segmentation array is empty after filtering.")
@@ -78,9 +64,6 @@ def load_data_2016(wav_path, seg_path, resampling, low=None, high=None, lowpass=
 
 def load_data_amc(sig_path, resampling, orig_sr=4000, low=None, high=None, lowpass=None,
                   downsampling=False, bandpass=False):
-    """
-    Load and process an AMC npz file containing the signal and segmentation indices.
-    """
     data = np.load(sig_path)
     sig = data['sig']
     sig = np.float32(sig / np.max(np.abs(sig)))  # Normalize
@@ -93,7 +76,6 @@ def load_data_amc(sig_path, resampling, orig_sr=4000, low=None, high=None, lowpa
     else:
         sig = butter_lowpass_filter(sig, fs=resampling, cutoff=lowpass, order=5)
 
-    # Extract segmentation indices
     s1 = data['s1']
     s2 = data['s2']
     sys_list = []
@@ -118,7 +100,6 @@ def load_data_amc(sig_path, resampling, orig_sr=4000, low=None, high=None, lowpa
     sys_array = np.array(sys_list)
     dia_array = np.array(dia_list)
 
-    # Adjust indices to new sampling rate
     scale_factor = resampling / orig_sr
     s1_resampled = np.round(s1 * scale_factor).astype(int)
     s2_resampled = np.round(s2 * scale_factor).astype(int)
@@ -127,13 +108,7 @@ def load_data_amc(sig_path, resampling, orig_sr=4000, low=None, high=None, lowpa
 
     return sig, s1_resampled, s2_resampled, sys_resampled, dia_resampled
 
-# -------------------- Preprocessing Functions --------------------
 def preprocess_2016_data():
-    """
-    Preprocess the 2016 data by matching wav files with annotations,
-    filtering out mismatches and errors, and saving valid examples.
-    """
-    # Define directories for audio and annotation files
     data_dirs = [
         './training/training-a',
         './training/training-b',
@@ -159,15 +134,12 @@ def preprocess_2016_data():
         seg_files = glob.glob(os.path.join(annot_dirs[i], '*'))
         print(f"Group {i}: Found {len(wav_files)} wav files and {len(seg_files)} annotation files.")
 
-        # Extract file identifiers
         wav_ids = [os.path.splitext(os.path.basename(s))[0] for s in wav_files]
         seg_ids = [os.path.basename(s).split('_')[0] for s in seg_files]
 
-        # Identify missing annotations
         missing_ids = [num for num in wav_ids if num not in seg_ids]
         print(f"Group {i}: {len(missing_ids)} wav files missing annotations.")
 
-        # Remove wav files that lack a matching annotation
         for mid in missing_ids:
             wav_path = os.path.join(data_dirs[i], f'{mid}.wav')
             if wav_path in wav_files:
@@ -177,11 +149,9 @@ def preprocess_2016_data():
         seg_files_group.append(seg_files)
         print(f"Group {i}: {len(wav_files)} wav files remain after removal.")
 
-    # Flatten and sort lists to (hopefully) ensure matching order
     wav_files_flat = sorted([f for sublist in wav_files_group for f in sublist])
     seg_files_flat = sorted([f for sublist in seg_files_group for f in sublist])
 
-    # Validate that each file pair can be loaded
     valid_wav_files = []
     valid_seg_files = []
     for wav_path, seg_path in zip(wav_files_flat, seg_files_flat):
@@ -202,7 +172,6 @@ def preprocess_2016_data():
         except Exception as e:
             print(f"Error processing {wav_path}: {e}")
 
-    # Filter out examples shorter than the desired feature length
     feature_length = 6144  # Adjust this value as needed
     total_feature_length_data = [d for d in total_data if len(d['wav']) >= feature_length]
     print(f"2016 Data: {len(total_feature_length_data)} samples after filtering (feature length >= {feature_length}).")
@@ -212,11 +181,6 @@ def preprocess_2016_data():
     print(f"Saved preprocessed 2016 data to {output_path}.")
 
 def preprocess_amc_data():
-    """
-    Preprocess AMC data from .npz files, applying filtering and resampling,
-    and save only those examples meeting the feature length criteria.
-    """
-    # Fetch AMC files
     amc_files = glob.glob('/home/brody9512/workspace/changhyun/PCG_infer/amc_data/20240417_AMC_labeled_heartsound/*/*.npz')
     print(f"Found {len(amc_files)} AMC files.")
     if not amc_files:
@@ -236,7 +200,6 @@ def preprocess_amc_data():
             print(f"Error processing file {file_path}: {e}")
             continue
 
-        # Build segmentation array
         seg = np.full_like(sig, 1)
         seg[dia_resampled] = 1 # Note: The AMC code originally set dia indices to 1 (same as default).
         seg[s1_resampled] = 2
@@ -260,7 +223,7 @@ def preprocess_amc_data():
     np.save(output_path, total_feature_length_data)
     print(f"Saved preprocessed AMC data to {output_path}.")
 
-# -------------------- Main Function --------------------
+
 def main():
     print("Starting preprocessing for 2016 data...")
     preprocess_2016_data()
