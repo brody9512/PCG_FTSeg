@@ -23,22 +23,12 @@ from utils import set_seed
 # Helper F's
 # ----------------------------
 def create_or_reset_folder(folder_path: str):
-    """
-    Creates (or resets) a folder by deleting it if it exists and recreating.
-    """
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
     os.mkdir(folder_path)
 
 
 def load_data_2016(load_path: str):
-    """
-    Loads the 2016 dataset from a .npy file and splits it into:
-      - data_test2016 (first 336 samples),
-      - data_train2016 (the rest),
-      - then does a train/valid split of data_train2016.
-    Returns: (data_train, data_valid, data_test)
-    """
     data2016 = np.load(load_path, allow_pickle=True)
     data_test2016 = data2016[:336]
     data_train2016 = data2016[336:]
@@ -49,9 +39,6 @@ def load_data_2016(load_path: str):
 
 
 def build_trainer(model, max_epochs=100, learning_rate=1e-3):
-    """
-    Creates a PyTorch Lightning Trainer with default or custom callbacks.
-    """
     trainer = pl.Trainer(
         log_every_n_steps=1,
         gradient_clip_algorithm='norm',
@@ -80,11 +67,6 @@ def build_trainer(model, max_epochs=100, learning_rate=1e-3):
 # Main
 # ----------------------------
 def main():
-    """
-    Main entry point for the training and inference of the PCG research.
-
-    Data loading, environment setup, training, testing, and any intermediate steps
-    """
     args = get_args()
 
     # ----------------------
@@ -112,7 +94,7 @@ def main():
     print("Using device:", device)
     print_config()
 
-    # fixed parameters (you can also move them to args if you need them configurable)
+    # fixed parameters
     IN_CHANNELS = 2
     OUT_CHANNELS = 4
     MINSIZE = 50
@@ -127,7 +109,6 @@ def main():
         f"twice_{args.twice}_nofft_{args.fft}"
     )
 
-    # Paths
     load_path = f"/workspace/data/PhysioNet{args.year}_{args.target_sr}Hz_{args.lowpass}_fe_{args.featureLength}.npy"
     infer_pth = f"/workspace/data/lightning_logs/version_{args.ver}/checkpoints/"
 
@@ -135,7 +116,6 @@ def main():
 
     print(f"pytorch_lightning version: {pl.__version__}")
 
-    # Instantiate your network (you can pass your fft/twice flags if desired)
     net = BasicUNet(
         spatial_dims=1,
         in_channels=IN_CHANNELS,
@@ -148,7 +128,6 @@ def main():
         twice=args.twice       # double-Conv in Down / UpCat
     )
 
-    # Build your PyTorch Lightning wrapper
     model = SEGNET(
         net=net,
         featureLength=args.featureLength,
@@ -162,11 +141,9 @@ def main():
         toler=args.toler
     )
 
-    # Decide if we are doing training or inference
     if not args.infer:
         # 5.b) TRAINING Phase
 
-        # Create path to save results
         path = f"/workspace/data/pcg_2016_jupyters/result/{args.year}_toler{args.toler}_{comment}/"
         create_or_reset_folder(path)
 
@@ -197,9 +174,7 @@ def main():
             collate_fn=monai.data.utils.default_collate
         )
 
-        # Build trainer
         trainer = build_trainer(model, max_epochs=MAX_EPOCHS, learning_rate=LEARNING_RATE)
-        # Fit
         trainer.fit(model, train_loader, valid_loader)
 
     else:
@@ -244,7 +219,6 @@ def main():
         if not args.nofolder:
             create_or_reset_folder(test_path)
 
-        # Load 2022 data
         new_load_path = f"/workspace/data/PhysioNet{year}_{args.target_sr}Hz_{args.lowpass}_fe_{args.featureLength}.npy"
         data2022 = np.load(new_load_path, allow_pickle=True)
 

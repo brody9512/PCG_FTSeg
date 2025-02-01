@@ -26,7 +26,6 @@ from utils import DiceBCELoss, eval_metrics
 # ------------------ ENCODER BLOCK ------------------
 #
 class Down(nn.Sequential):
-    """maxpooling downsampling and two convolutions."""
     def __init__(
         self,
         spatial_dims: int,
@@ -53,7 +52,7 @@ class Down(nn.Sequential):
         self.convs_init = TwoConv(spatial_dims, in_chns, in_chns, act, norm, bias, dropout)
         self.convs = TwoConv(spatial_dims, in_chns, out_chns, act, norm, bias, dropout)
         
-        # Fourier Transform module
+        # Fourier Transform
         self.fftRFT=fftRFT(in_chns,in_chns)
             
     def get_positional_encoding(self, pos, i, dim):
@@ -91,8 +90,6 @@ class Down(nn.Sequential):
 # ------------------  DECODER BLOCK ------------------
 #
 class UpCat(nn.Module):
-    """upsampling, concatenation with the encoder feature map, two convolutions"""
-
     def __init__(
         self,
         spatial_dims: int,
@@ -177,7 +174,7 @@ class UpCat(nn.Module):
         return x
     
 #
-# ------------------ BASIC UNET ------------------
+# ------------------ UNET ------------------
 #
 class BasicUNet(nn.Module):
     def __init__(
@@ -200,17 +197,14 @@ class BasicUNet(nn.Module):
         fea = ensure_tuple_rep(features, 7)
         print(f"BasicUNet features: {fea}.")
         
-        # Initial 2-conv
         self.conv_0 = TwoConv(spatial_dims, in_channels, fea[0], act, norm, bias, dropout)
 
-        # Down blocks
         self.down_1 = Down(spatial_dims, fea[0], fea[1], act, norm, bias, dropout, fft=fft, twice=twice)
         self.down_2 = Down(spatial_dims, fea[1], fea[2], act, norm, bias, dropout, fft=fft, twice=twice)
         self.down_3 = Down(spatial_dims, fea[2], fea[3], act, norm, bias, dropout, fft=fft, twice=twice)
         self.down_4 = Down(spatial_dims, fea[3], fea[4], act, norm, bias, dropout, fft=fft, twice=twice)
         self.down_5 = Down(spatial_dims, fea[4], fea[5], act, norm, bias, dropout, fft=fft, twice=twice)
 
-        # Up blocks
         self.upcat_5 = UpCat(spatial_dims, fea[5], fea[4], fea[4], act, norm, bias, dropout, upsample, fft=fft, twice=twice)
         self.upcat_4 = UpCat(spatial_dims, fea[4], fea[3], fea[3], act, norm, bias, dropout, upsample, fft=fft, twice=twice)
         self.upcat_3 = UpCat(spatial_dims, fea[3], fea[2], fea[2], act, norm, bias, dropout, upsample, fft=fft, twice=twice)
@@ -218,11 +212,10 @@ class BasicUNet(nn.Module):
         # final up path to fea[6]
         self.upcat_1 = UpCat(spatial_dims, fea[1], fea[0], fea[6], act, norm, bias, dropout, upsample, fft=fft, twice=twice, halves=False)
 
-        # Final
         self.final_conv = Conv["conv", spatial_dims](fea[6], out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor):
-        # First TwoConv
+        # TwoConv
         x0 = self.conv_0(x) 
 
         x1 = self.down_1(x0)
@@ -244,15 +237,9 @@ class BasicUNet(nn.Module):
         return logits
     
 #
-# ------------------ LIGHTNING MODULE WRAPPER ------------------
+# ------------------ SEGNET ------------------
 #
 class SEGNET(pl.LightningModule):
-    """
-    LightningModule to wrap the BasicUNet (or other nets),
-    handle training/validation/test loops, and compute metrics.
-    Certain references like 'year', 'path', 'toler', etc. are turned
-    into constructor arguments so main.py can set them.
-    """
     def __init__(self,
                  net: nn.Module,
                  featureLength: int = 2560,
@@ -295,20 +282,15 @@ class SEGNET(pl.LightningModule):
         if out_channels==5:
 
             task = 'multilabel'   
-            # multilabel: 하나의 그림이 하나의 카테고리(2개 이상)에 속하지 않고, 두 개 이상의 카테고리에 속하게 된다.   
             average = 'micro'
-            # micro: Sum statistics over all labels
             self.validACC = torchmetrics.Accuracy(task=task,num_labels=out_channels, average=average)
             self.validSEN = torchmetrics.Recall(task=task,num_labels=out_channels,average=average)
             self.validPPV = torchmetrics.Precision(task=task,num_labels=out_channels,average=average)
             self.validF1 = torchmetrics.F1Score(task=task,num_labels=out_channels,average=average)
                     
-        elif out_channels>3: #1234 여야
+        elif out_channels>3: 
             task = 'multiclass'
-            #Multi-class 분류 문제는 하나의 그림에 하나의 객체만 있어야 하고, 그리고 그 객체는 2개 이상의 카테고리에 속하는 경우
             average = 'macro'
-            # macro: Calculate statistics for each label and average them
-            # weighted: Calculates statistics for each label and computes weighted average using their support
             self.validACC = torchmetrics.Accuracy(task=task,num_classes=out_channels,average=average)
             self.validSEN = torchmetrics.Recall(task=task,num_classes=out_channels,average=average)
             self.validPPV = torchmetrics.Precision(task=task,num_classes=out_channels,average=average)
@@ -325,7 +307,7 @@ class SEGNET(pl.LightningModule):
     def forward(self, x):
         return self.net(x)
         
-    def sw_inference(self, x): # Inference Sliding window using MONAI API: Using this only valid and test when size of input is larger than 2048
+    def sw_inference(self, x):
         return sliding_window_inference(
             inputs=x,
             roi_size=self.featureLength,
@@ -346,9 +328,7 @@ class SEGNET(pl.LightningModule):
                 'monitor': 'val_loss'
             }
         }
-    #
-    # -------------- PIPELINE & STEPS --------------
-    #
+    
     def pipeline(self, batch, batch_idx, save=False):
         """
         Shared logic for train/val/test steps
@@ -356,7 +336,7 @@ class SEGNET(pl.LightningModule):
         global keys_
         global metrics
         
-        # For custom metrics
+        # custom metrics
         keys = ["s1", "s2", "sys", "dia"]
         sub_keys = ["TP", "FN", "FP", "sen", "pre", "f1"]
         metrics = {key: {sub_key: 0 for sub_key in sub_keys} for key in keys}
@@ -374,7 +354,6 @@ class SEGNET(pl.LightningModule):
         y = y
         yhat = yhat
         
-        # If 'save' is True, do your plotting or metrics saving
         if save:
             
                 for i in range(len(x)):
@@ -398,7 +377,6 @@ class SEGNET(pl.LightningModule):
                     final_output_all = np.zeros_like(output_all)
 
 
-                    ##여기에 넘파이 제로를 만들어서 
                     for q in range(len(output_all)):
                         output_all_=skimage.morphology.remove_small_objects(output_all[q], self.minsize, connectivity=1).astype(int)
 
@@ -461,13 +439,11 @@ class SEGNET(pl.LightningModule):
                     plt.plot(x[i,0].cpu().detach().numpy(),label='x',color='black',alpha=.6)
                     plt.scatter(idxs_y_s1,[5]*len(idxs_y_s1),color='r',label='y_s1')
                     plt.scatter(idxs_y_s2,[5]*len(idxs_y_s2),color='b',label='y_s2')
-                    #plt.legend(fontsize=3)
                     plt.subplot(612)
                     plt.title(f'Prediction result')
                     plt.plot(x[i,0].cpu().detach().numpy(),label='x',color='black',alpha=.6)
                     plt.scatter(idxs_yhat_s1,[5]*len(idxs_yhat_s1),color='r',label='yhat_s1')
                     plt.scatter(idxs_yhat_s2,[5]*len(idxs_yhat_s2),color='b',label='yhat_s2')
-                    #plt.legend(fontsize=3)
                                         
                     plt.subplot(613)
                     plt.title(f'Ground Truth fill')
@@ -479,13 +455,10 @@ class SEGNET(pl.LightningModule):
                     plt.fill_between(np.arange(len(x_values)), 0, np.where(output_s1 != 0, x_values, np.nan), color='r', alpha=0.5)
                     plt.fill_between(np.arange(len(x_values)), 0, np.where(output_s2 != 0, x_values, np.nan), color='b', alpha=0.5)
                 
-                    
-                    # Ground truth tile
                     sig_alpha = 0.6
                     s1_s2_alpha_gt = 0.5
                     s1_s2_alpha = 0.5
 
-                    # Ground truth tile
                     plt.subplot(614)
                     plt.title('Ground Truth tile')
                     x_values = x[i, 0].cpu().detach().numpy()
@@ -493,7 +466,6 @@ class SEGNET(pl.LightningModule):
                     y_s1_map = np.tile(y_s1, (50, 1))
                     y_s2_map = np.tile(y_s2, (50, 1))
 
-                    # Applying the masked values to the ground truth subplot
                     plt.imshow(y_s1_map, aspect='auto', cmap='Reds', alpha=s1_s2_alpha_gt, extent=[0, len(y_s1), np.min(x_values), np.max(x_values)])
                     plt.imshow(y_s2_map, aspect='auto', cmap='Blues', alpha=s1_s2_alpha_gt, extent=[0, len(y_s2), np.min(x_values), np.max(x_values)])
                     
@@ -504,7 +476,6 @@ class SEGNET(pl.LightningModule):
                     yhat_values_s1 = yhat[i, 0].cpu().detach().numpy()
                     yhat_values_s1_masked = np.ma.masked_where(yhat_values_s1 == 0, yhat_values_s1)
                     plt.imshow(np.tile(yhat_values_s1_masked, (50, 1)), aspect='auto', cmap='Reds', alpha=s1_s2_alpha, extent=[0, len(yhat_values_s1), np.min(x[i, 0].cpu().detach().numpy()), np.max(x[i, 0].cpu().detach().numpy())])
-
 
 
                     plt.subplot(616)
@@ -578,7 +549,6 @@ class SEGNET(pl.LightningModule):
             if save:
                 paired_test[fname] =o["metrics"]["fname_f1_score"][fname]
 
-                ## Add precision, sensitivity
                 paired_precision[fname] = {
                     "s1": round(metrics["s1"]["pre"], 5),
                     "s2": round(metrics["s2"]["pre"], 5),
@@ -598,7 +568,6 @@ class SEGNET(pl.LightningModule):
                     
                 
                 metrics = o['metrics']
-                # Add metrics one by one 
                 for d in ["s1","s2","sys","dia"]:
                     for k in ["sen", "pre", "f1"]:
                         metrics_[d][k] += metrics[d][k]
@@ -608,7 +577,6 @@ class SEGNET(pl.LightningModule):
         
                     
         if save:
-        # Divide test data
             for d in ["s1","s2","sys","dia"]:
                 for k in ["sen", "pre", "f1"]: 
                         metrics_[d][k] /= len(outputs)
@@ -644,14 +612,12 @@ class SEGNET(pl.LightningModule):
             np.save(f'{self.path}f1_score_collection.npy', f1_score_collection)
 
 
-            # precision_collection, sensitivity_collection 저장하기
             np.save(f'{self.path}fname_pre_score.npy', paired_precision)
             np.save(f'{self.path}pre_score_collection.npy', precision_collection)
             np.save(f'{self.path}fname_sen_score.npy', paired_sensitivity)
             np.save(f'{self.path}sen_score_collection.npy', sensitivity_collection)
 
 
-            # Save as txt
             with open(f'{self.path}PCG_Metrics_{self.year}_toler{self.toler}_result.txt', 'w') as file:
                 file.write("penguin_means:\n")
                 for segment in segment_names: # ['s1', 's2', 'sys', 'dia']
