@@ -32,30 +32,13 @@ class fftRFT(nn.Module):
         self.norm2 = nn.InstanceNorm1d(out_channels*2)
 
     def forward(self, x):
-        # Fourier domain   
-        # _, _, W = x.shape
         fft = torch.fft.rfft(x, norm='ortho')
         fft = torch.cat([fft.real, fft.imag], dim=1) 
-
         fft = F.gelu(self.norm2(self.fft_conv(fft)))
         
         fft_real, fft_imag = torch.chunk(fft, 2, dim=1) 
-        ##chunk함수는 tensor를 쪼개는 함수이다. tensor를 몇개로 어떤 dimension으로 쪼갤지 설정해주고 사용        
         
         fft = torch.complex(fft_real, fft_imag)
-        '''real = torch.tensor([1, 2], dtype=torch.float32)
-        imag = torch.tensor([3, 4], dtype=torch.float32)
-        z = torch.complex(real, imag)
-        z
-        tensor([(1.+3.j), (2.+4.j)])'''
-        
         fft = torch.fft.irfft(fft, norm='ortho')
-        # fft = self.norm1(fft)
-        # Image domain  
-        
-        # img = F.leaky_relu(self.norm1(self.img_conv(x)),0.01)
-        img = F.gelu(self.norm1(self.img_conv(x)))
 
-        # Mixing (residual, image, fourier)
-        output = fft
-        return output
+        return fft

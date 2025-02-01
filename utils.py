@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import monai
 import numpy as np
 import neurokit2 as nk
-import neurokit2 as nk
 
 
 def set_seed(seed: int = 42):
@@ -90,16 +89,6 @@ def zscore(arr,mean=None,std=None):
             return (arr-np.mean(arr))/(np.std(arr)+1e-8)
         except:
             return (arr-torch.mean(arr))/(torch.std(arr)+1e-8)
-        
-def logsumexp_2d(tensor):
-    """
-    Used in CBAM channel gating (LSE pool).
-    Flatten to 2D, apply log-sum-exp.
-    """
-    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
-    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
-    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
-    return outputs
 
 def augment_neurokit(pcg_signal, sr, p=0.2):
     """
