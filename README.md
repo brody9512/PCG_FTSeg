@@ -1,19 +1,21 @@
 # PCG_FTSeg: Enhancement of Phonocardiogram Segmentation using Convolutional Neural Networks with Fourier transform Module
+
 <p align="center"><img width="100%" src="./image/model_figure.png" /></p>
 
-## Paper
+## 📄 Paper
 This repository provides the official implementation code for the paper: **"Enhancement of Phonocardiogram Segmentation using Convolutional Neural Networks with Fourier transform Module."**
 
 Authors: [Changhyun Park](https://github.com/brody9512), Keewon Shin, Jinew Seo, Hyunseok Lim, Gyeong Hoon Kim, Woo-
 Young Seo, Sung-Hoon Kim, Namkug Kim
-[MI2RL LAB](https://www.mi2rl.co/)<br/><br/>
+
+[MI2RL LAB](https://www.mi2rl.co/)
 
 ## 💡 Highlights
 + Introduce an enhanced U-Net architecture integrated with Convolutional Fourier Transform (CF) modules that fuse time-domain convolution and frequency-domain analysis via FFT and iFFT, enabling precise extraction of both temporal and spectral features for accurate PCG segmentation.
 + Employ a dual CF module strategy—applied consecutively in both encoder and decoder layers—to robustly differentiate between S1 and S2 heart sounds and background noise, thereby significantly improving segmentation performance even in the presence of heart murmurs.
 + Validate the proposed approach on multiple datasets (internal PhysioNet 2016 and external PhysioNet 2022 and AMC), demonstrating superior performance with an average F1 score of 97.64% for S1 and S2 segmentation compared to state-of-the-art methods such as LR-HSMM, LSTM, and BiLSTM.
 
-## Repository Structure
+## 🧱 Repository Structure
 ```
 ├── config.py 
 ├── dataset.py 
@@ -28,7 +30,7 @@ Young Seo, Sung-Hoon Kim, Namkug Kim
 │ └── signal_2022.py
 ```
 
-## Requirements
+## 💾 Requirements
 - numpy >= 1.21.0
 - scipy >= 1.7.0
 - torch >= 1.10.0
@@ -41,12 +43,21 @@ Young Seo, Sung-Hoon Kim, Namkug Kim
 - librosa >= 0.10.2
 - natsort >= 8.4.0
 
-## Script Example
+## 📜 Script Example
 ```bash
-python main.py --gpu 0 --ver [appropriate version identifier each time you run the script] --toler 40 --featureLength 6144 --target_sr 1000 --lowpass 20_200 --year 2016 --fft --twice
+python main.py 
+    --gpu 0 
+    --ver ['appropriate version identifier each time you run the script'] 
+    --toler 40 
+    --featureLength 6144 
+    --target_sr 1000 
+    --lowpass 20_200 
+    --year 2016 
+    --fft 
+    --twice
 ```
 
-## Citation
+## 📝 Citation
 If you use this code or find it useful in your research, please cite our paper:
 ```bibitex
 @article{pcg_ftseg,
@@ -55,3 +66,7 @@ If you use this code or find it useful in your research, please cite our paper:
   year={2025}
 }
 ```
+
+## 🙋🏻‍♂️ Acknowledgements
+We would like to thank [Junseong Lee (junjslee)](https://github.com/junjslee) for his contributions to refactoring the code structure and setting up this GitHub repository.
+
