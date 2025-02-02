@@ -43,7 +43,7 @@ Young Seo, Sung-Hoon Kim, Namkug Kim
 │ └── signal_2022.py
 ```
 
-## Datasets
+## 🗂️ Datasets
 - Internal Dataset (Train/Validation):
     - Uses the publicly available [PhysioNet 2016](https://physionet.org/content/challenge-2016/1.0.0/) dataset
 - External Datasets (Test):
@@ -64,7 +64,7 @@ python main.py
     --twice
 ```
 
-## Results: 
+## 🎯 Results: 
 Comparison of Methods on MITHSDB Benchmark (Tolerance Window = 40 ms)
 ### Internal (PhysioNet 2016)
 | Method                 | Se (%)         | P+ (%)         | F1 S1 (%)       | F1 S2 (%)       | F1 (%)         |
