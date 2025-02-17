@@ -83,9 +83,6 @@ def main():
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
-    # Load WANDB API key from environment variable
-    os.environ["WANDB_API_KEY"] = os.getenv("WANDB_API_KEY", "")
-
     # Suppress warnings
     warnings.filterwarnings(action='ignore')
 
